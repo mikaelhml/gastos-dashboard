@@ -21,6 +21,15 @@ export function buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, tran
   if (summaryReal.length > 0) {
     buildExtratoCards(summaryReal);
     buildFluxoCharts(summaryReal);
+  } else {
+    const container = document.getElementById('extratoCards');
+    if (container) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <strong>Sem extrato importado ainda</strong>
+          Importe PDFs da conta para visualizar fluxo de caixa e saldo por mês.
+        </div>`;
+    }
   }
 }
 

@@ -16,8 +16,8 @@ import { buildVisaoGeral }              from './views/visao-geral.js';
 import { buildAssinaturas }             from './views/assinaturas.js';
 import { buildDespesasFixas }           from './views/despesas-fixas.js';
 import { buildParcelamentos }           from './views/parcelamentos.js';
-import { initLancamentos, filterLancamentos } from './views/lancamentos.js';
-import { initExtrato, filterExtrato }   from './views/extrato.js';
+import { initLancamentos, filterLancamentos, clearLancamentosFilters } from './views/lancamentos.js';
+import { initExtrato, filterExtrato, clearExtratoFilters }   from './views/extrato.js';
 import { initProjecao, recalcularProjecao } from './views/projecao.js';
 import { buildImportar, clearBase }     from './views/importar.js';
 
@@ -29,6 +29,7 @@ async function init() {
   try {
     await openDB();
     await seedIfEmpty(SEED_DATA);
+    bindTabKeyboardNavigation();
     await refreshDashboard();
 
     // Remove tela de carregamento se houver
@@ -114,17 +115,48 @@ function refreshDashboard() {
 // ── Navegação por abas ────────────────────────────────────────────────────────
 
 function switchTab(event, name) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
-  event.currentTarget.classList.add('active');
+  const currentTab = event?.currentTarget || document.getElementById(`tab-button-${name}`);
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.classList.remove('active');
+    tab.setAttribute('aria-selected', 'false');
+    tab.setAttribute('tabindex', '-1');
+  });
+  document.querySelectorAll('.tab-content').forEach(panel => panel.classList.remove('active'));
+
+  document.getElementById('tab-' + name)?.classList.add('active');
+  currentTab?.classList.add('active');
+  currentTab?.setAttribute('aria-selected', 'true');
+  currentTab?.setAttribute('tabindex', '0');
+}
+
+function bindTabKeyboardNavigation() {
+  const tabs = [...document.querySelectorAll('.tab')];
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('keydown', event => {
+      const lastIndex = tabs.length - 1;
+      let nextIndex = index;
+
+      if (event.key === 'ArrowRight') nextIndex = index === lastIndex ? 0 : index + 1;
+      if (event.key === 'ArrowLeft') nextIndex = index === 0 ? lastIndex : index - 1;
+      if (event.key === 'Home') nextIndex = 0;
+      if (event.key === 'End') nextIndex = lastIndex;
+
+      if (nextIndex !== index) {
+        event.preventDefault();
+        tabs[nextIndex].focus();
+        tabs[nextIndex].click();
+      }
+    });
+  });
 }
 
 // ── Exposição ao window (chamadas vindas dos atributos onclick/oninput no HTML) ─
 
 window.switchTab          = switchTab;
 window.filterLancamentos  = filterLancamentos;
+window.clearLancamentosFilters = clearLancamentosFilters;
 window.filterExtrato      = filterExtrato;
+window.clearExtratoFilters = clearExtratoFilters;
 window.recalcularProjecao = recalcularProjecao;
 window.clearBase          = clearBase;
 window.refreshDashboard   = refreshDashboard;

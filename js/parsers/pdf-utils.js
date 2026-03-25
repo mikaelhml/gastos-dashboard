@@ -1,5 +1,6 @@
 const PDFJS_URL  = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.mjs';
 const WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs';
+let cachedPdfPassword = '';
 
 export const MESES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
@@ -47,6 +48,11 @@ async function abrirPDF(buffer) {
     const isRetry = reason === responses.INCORRECT_PASSWORD;
     const promptFn = globalThis.prompt;
 
+    if (cachedPdfPassword && !isRetry) {
+      updatePassword(cachedPdfPassword);
+      return;
+    }
+
     if (typeof promptFn !== 'function') {
       passwordCancelled = true;
       loadingTask.destroy();
@@ -55,9 +61,9 @@ async function abrirPDF(buffer) {
 
     const password = promptFn(
       isRetry
-        ? 'Senha incorreta. Digite novamente a senha do PDF Nubank.'
-        : 'Este PDF está protegido por senha. Digite a senha para continuar a importação.',
-      '',
+        ? 'Senha incorreta. Digite novamente a senha do PDF.'
+        : 'Este PDF está protegido por senha. Digite a senha para continuar a importação. Ela será reutilizada automaticamente nos próximos PDFs desta sessão.',
+      cachedPdfPassword,
     );
 
     if (password === null) {
@@ -66,6 +72,7 @@ async function abrirPDF(buffer) {
       return;
     }
 
+    cachedPdfPassword = password;
     updatePassword(password);
   };
 
@@ -80,6 +87,7 @@ async function abrirPDF(buffer) {
     }
 
     if (/incorrect password|invalid password/i.test(message)) {
+      cachedPdfPassword = '';
       throw new Error('Não foi possível abrir o PDF: senha incorreta.');
     }
 
@@ -89,8 +97,7 @@ async function abrirPDF(buffer) {
   return pdf;
 }
 
-export async function extrairGruposPDF(buffer, tol = 8) {
-  const pdf = await abrirPDF(buffer);
+async function extrairGruposDoPdf(pdf, tol = 8) {
   const gruposPaginas = [];
 
   for (let pg = 1; pg <= pdf.numPages; pg++) {
@@ -122,9 +129,21 @@ export async function extrairGruposPDF(buffer, tol = 8) {
   return gruposPaginas;
 }
 
+export async function extrairGruposPDF(buffer, tol = 8) {
+  const pdf = await abrirPDF(buffer);
+  return extrairGruposDoPdf(pdf, tol);
+}
+
 export async function extrairLinhasPDF(buffer, tol = 8) {
   const grupos = await extrairGruposPDF(buffer, tol);
   return grupos.map(grupo => grupo.map(i => i.str).join(' ').trim());
+}
+
+export async function extrairEstruturaPDF(buffer, tolGrupos = 8, tolLinhas = tolGrupos) {
+  const pdf = await abrirPDF(buffer);
+  const grupos = await extrairGruposDoPdf(pdf, tolGrupos);
+  const linhas = grupos.map(grupo => grupo.map(i => i.str).join(' ').trim());
+  return { grupos, linhas, tolLinhas };
 }
 
 export function parseBRL(str) {

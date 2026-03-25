@@ -4,29 +4,33 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dashboard de Gastos</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='50' font-size='44'%3E%F0%9F%92%B3%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
+
+<a href="#mainContent" class="skip-link">Pular para o conteúdo principal</a>
 
 <header>
   <h1>💳 Dashboard de Gastos</h1>
   <span id="headerPeriodo">Carregando...</span>
 </header>
 
-<div class="tabs">
-  <div class="tab active" onclick="switchTab(event, 'visao')">📊 Visão Geral</div>
-  <div class="tab" onclick="switchTab(event, 'assinaturas')">🔁 Assinaturas</div>
-  <div class="tab" onclick="switchTab(event, 'despesas')">📋 Despesas Fixas</div>
-  <div class="tab" onclick="switchTab(event, 'parcelamentos')">💳 Parcelamentos</div>
-  <div class="tab" onclick="switchTab(event, 'lancamentos')">🧾 Lançamentos</div>
-  <div class="tab" onclick="switchTab(event, 'extrato')">🏦 Extrato Conta</div>
-  <div class="tab" onclick="switchTab(event, 'projecao')">🔮 Projeção</div>
-  <div class="tab" onclick="switchTab(event, 'importar')">📥 Importar</div>
+<div class="tabs" role="tablist" aria-label="Navegação principal do dashboard">
+  <button type="button" id="tab-button-visao" class="tab active" role="tab" aria-selected="true" aria-controls="tab-visao" onclick="switchTab(event, 'visao')">📊 Visão Geral</button>
+  <button type="button" id="tab-button-assinaturas" class="tab" role="tab" aria-selected="false" aria-controls="tab-assinaturas" onclick="switchTab(event, 'assinaturas')">🔁 Assinaturas</button>
+  <button type="button" id="tab-button-despesas" class="tab" role="tab" aria-selected="false" aria-controls="tab-despesas" onclick="switchTab(event, 'despesas')">📋 Despesas Fixas</button>
+  <button type="button" id="tab-button-parcelamentos" class="tab" role="tab" aria-selected="false" aria-controls="tab-parcelamentos" onclick="switchTab(event, 'parcelamentos')">💳 Parcelamentos</button>
+  <button type="button" id="tab-button-lancamentos" class="tab" role="tab" aria-selected="false" aria-controls="tab-lancamentos" onclick="switchTab(event, 'lancamentos')">🧾 Lançamentos</button>
+  <button type="button" id="tab-button-extrato" class="tab" role="tab" aria-selected="false" aria-controls="tab-extrato" onclick="switchTab(event, 'extrato')">🏦 Extrato Conta</button>
+  <button type="button" id="tab-button-projecao" class="tab" role="tab" aria-selected="false" aria-controls="tab-projecao" onclick="switchTab(event, 'projecao')">🔮 Projeção</button>
+  <button type="button" id="tab-button-importar" class="tab" role="tab" aria-selected="false" aria-controls="tab-importar" onclick="switchTab(event, 'importar')">📥 Importar</button>
 </div>
 
+<main id="mainContent">
 <!-- ── VISÃO GERAL ─────────────────────────────────────────────────────────── -->
-<div id="tab-visao" class="tab-content active">
+<div id="tab-visao" class="tab-content active" role="tabpanel" aria-labelledby="tab-button-visao">
   <div class="cards">
     <div class="card red" style="--accent:#fc8181">
       <div class="label">Total Assinaturas/mês</div>
@@ -36,7 +40,7 @@
     <div class="card red" style="--accent:#fc8181">
       <div class="label">Total Despesas Fixas/mês</div>
       <div class="value" id="totalFixed">—</div>
-      <div class="sub">FIES, Financiamento, etc.</div>
+      <div class="sub">Contas recorrentes, parcelamentos e financiamentos</div>
     </div>
     <div class="card yellow" style="--accent:#f6e05e">
       <div class="label">Total Comprometido/mês</div>
@@ -98,7 +102,7 @@
 </div>
 
 <!-- ── ASSINATURAS ─────────────────────────────────────────────────────────── -->
-<div id="tab-assinaturas" class="tab-content">
+<div id="tab-assinaturas" class="tab-content" role="tabpanel" aria-labelledby="tab-button-assinaturas">
   <div class="summary-bar">
     <div class="sb-item"><span class="sb-label">Total recorrente:</span><span class="sb-value" id="subTotalBar">—</span></div>
     <div class="divider"></div>
@@ -154,7 +158,7 @@
 </div>
 
 <!-- ── DESPESAS FIXAS ──────────────────────────────────────────────────────── -->
-<div id="tab-despesas" class="tab-content">
+<div id="tab-despesas" class="tab-content" role="tabpanel" aria-labelledby="tab-button-despesas">
   <div class="summary-bar">
     <div class="sb-item"><span class="sb-label">Total fixo/mês:</span><span class="sb-value" id="fixedTotalBar">—</span></div>
     <div class="divider"></div>
@@ -202,7 +206,7 @@
 </div>
 
 <!-- ── PARCELAMENTOS ───────────────────────────────────────────────────────── -->
-<div id="tab-parcelamentos" class="tab-content">
+<div id="tab-parcelamentos" class="tab-content" role="tabpanel" aria-labelledby="tab-button-parcelamentos">
   <div class="section-title">🏦 Financiamentos</div>
   <div class="financ-summary">
     <div class="sb-item"><span class="sb-label" style="color:#90cdf4">Parcela total/mês:</span><span class="sb-value" id="financTotalBar">—</span></div>
@@ -234,11 +238,12 @@
 </div>
 
 <!-- ── LANÇAMENTOS ─────────────────────────────────────────────────────────── -->
-<div id="tab-lancamentos" class="tab-content">
+<div id="tab-lancamentos" class="tab-content" role="tabpanel" aria-labelledby="tab-button-lancamentos">
   <div class="filters">
-    <input type="text" id="searchInput" placeholder="🔍 Buscar por descrição..." oninput="filterLancamentos()">
-    <select id="filterFatura" onchange="filterLancamentos()"></select>
-    <select id="filterCat"    onchange="filterLancamentos()"></select>
+    <input type="text" id="searchInput" placeholder="🔍 Buscar por descrição..." aria-label="Buscar lançamentos por descrição" oninput="filterLancamentos()">
+    <select id="filterFatura" aria-label="Filtrar lançamentos por fatura" onchange="filterLancamentos()"></select>
+    <select id="filterCat" aria-label="Filtrar lançamentos por categoria" onchange="filterLancamentos()"></select>
+    <button type="button" class="btn-inline-secondary btn-filter-clear" onclick="clearLancamentosFilters()">Limpar filtros</button>
   </div>
   <div class="table-wrap">
     <table>
@@ -249,11 +254,79 @@
     </table>
   </div>
   <div style="margin-top:12px;font-size:0.82rem;color:#718096;text-align:center" id="lancamentosCount"></div>
-  <div id="lancamentosActionFeedback" class="inline-form-feedback" style="margin-top:12px"></div>
+  <div id="lancamentosActionFeedback" class="inline-form-feedback" style="margin-top:12px" aria-live="polite"></div>
+
+  <dialog id="lancamentoConvertDialog" class="app-modal">
+    <form id="lancamentoConvertForm" class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="lancamentoConvertTitle">Converter lançamento</div>
+          <div class="modal-subtitle" id="lancamentoConvertSubtitle">Revise os dados antes de salvar.</div>
+        </div>
+        <button type="button" class="btn-inline-secondary" id="lancamentoConvertCancelTop">Fechar</button>
+      </div>
+
+      <input type="hidden" id="convertLancamentoId">
+      <input type="hidden" id="convertAction">
+
+      <div class="modal-grid">
+        <label class="form-field form-field-sm" id="convertIconField">
+          <span>Ícone</span>
+          <select id="convertIcon">
+            <option value="✨">✨ Padrão</option>
+            <option value="🎵">🎵 Música</option>
+            <option value="📺">📺 Streaming</option>
+            <option value="☁️">☁️ Nuvem</option>
+            <option value="📚">📚 Estudos</option>
+            <option value="🎮">🎮 Games</option>
+            <option value="💼">💼 Trabalho</option>
+            <option value="📱">📱 App</option>
+            <option value="🧾">🧾 Serviço</option>
+            <option value="💳">💳 Cartão</option>
+          </select>
+        </label>
+        <label class="form-field">
+          <span>Categoria</span>
+          <input id="convertCategoria" type="text" required>
+        </label>
+        <label class="form-field">
+          <span>Descrição</span>
+          <input id="convertDescricao" type="text" required>
+        </label>
+        <label class="form-field">
+          <span>Valor mensal</span>
+          <input id="convertValor" type="number" min="0.01" step="0.01" required>
+        </label>
+        <label class="form-field" id="convertObsField">
+          <span>Observação</span>
+          <input id="convertObs" type="text" placeholder="Ex.: criado a partir da fatura">
+        </label>
+        <label class="form-field convert-parcelado-field">
+          <span>Parcelas pagas</span>
+          <input id="convertPagas" type="number" min="1" step="1">
+        </label>
+        <label class="form-field convert-parcelado-field">
+          <span>Total de parcelas</span>
+          <input id="convertTotal" type="number" min="1" step="1">
+        </label>
+        <label class="form-field convert-parcelado-field">
+          <span>Início</span>
+          <input id="convertInicio" type="month">
+        </label>
+      </div>
+
+      <div id="lancamentoConvertFeedback" class="inline-form-feedback" aria-live="polite"></div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-inline-secondary" id="lancamentoConvertCancel">Cancelar</button>
+        <button type="submit" class="btn-primary" id="lancamentoConvertSubmit">Salvar conversão</button>
+      </div>
+    </form>
+  </dialog>
 </div>
 
 <!-- ── EXTRATO CONTA ───────────────────────────────────────────────────────── -->
-<div id="tab-extrato" class="tab-content">
+<div id="tab-extrato" class="tab-content" role="tabpanel" aria-labelledby="tab-button-extrato">
   <div class="summary-bar">
     <div class="sb-item"><span class="sb-label">Período:</span><span class="sb-value" id="extratoPeriodo">—</span></div>
     <div class="divider"></div>
@@ -285,14 +358,15 @@
 
   <div class="section-title">🧾 Todas as Movimentações</div>
   <div class="filters">
-    <input type="text" id="extratoSearch" placeholder="🔍 Buscar..." oninput="filterExtrato()">
-    <select id="extratoFilterMes"  onchange="filterExtrato()"></select>
-    <select id="extratoFilterTipo" onchange="filterExtrato()">
+    <input type="text" id="extratoSearch" placeholder="🔍 Buscar..." aria-label="Buscar movimentações do extrato" oninput="filterExtrato()">
+    <select id="extratoFilterMes" aria-label="Filtrar extrato por mês" onchange="filterExtrato()"></select>
+    <select id="extratoFilterTipo" aria-label="Filtrar extrato por tipo" onchange="filterExtrato()">
       <option value="">Entradas e Saídas</option>
       <option value="entrada">Entradas</option>
       <option value="saida">Saídas</option>
     </select>
-    <select id="extratoFilterCat" onchange="filterExtrato()"></select>
+    <select id="extratoFilterCat" aria-label="Filtrar extrato por categoria" onchange="filterExtrato()"></select>
+    <button type="button" class="btn-inline-secondary btn-filter-clear" onclick="clearExtratoFilters()">Limpar filtros</button>
   </div>
   <div class="table-wrap">
     <table>
@@ -304,7 +378,7 @@
 </div>
 
 <!-- ── PROJEÇÃO FUTURA ─────────────────────────────────────────────────────── -->
-<div id="tab-projecao" class="tab-content">
+<div id="tab-projecao" class="tab-content" role="tabpanel" aria-labelledby="tab-button-projecao">
   <div style="background:linear-gradient(135deg,#1a1f2e,#16213e);border:1px solid #2d3748;border-radius:14px;padding:22px 24px;margin-bottom:24px">
     <div style="font-size:1rem;font-weight:700;color:#e2e8f0;margin-bottom:16px">
       ⚙️ Parâmetros da Projeção
@@ -357,19 +431,19 @@
     <div class="card green" style="--accent:#68d391">
       <div class="label">🌟 Otimista</div>
       <div class="value" id="scOtimistaVal" style="font-size:1.1rem;color:#68d391">—</div>
-      <div class="sub">Salário R$11k · Itaú R$6k · Outros R$1k</div>
+      <div class="sub">Entradas maiores e saídas mais leves</div>
       <div class="sub" id="scOtimistaTime" style="margin-top:6px;color:#68d391"></div>
     </div>
     <div class="card yellow" style="--accent:#f6e05e">
       <div class="label">⚖️ Realista</div>
       <div class="value" id="scRealistaVal" style="font-size:1.1rem;color:#f6e05e">—</div>
-      <div class="sub">Salário R$9k · Itaú R$7.9k · Outros R$1.2k</div>
+      <div class="sub">Referência intermediária para comparação</div>
       <div class="sub" id="scRealistaTime" style="margin-top:6px;color:#f6e05e"></div>
     </div>
     <div class="card red" style="--accent:#fc8181">
       <div class="label">⚠️ Pessimista</div>
       <div class="value" id="scPessimistaVal" style="font-size:1.1rem;color:#fc8181">—</div>
-      <div class="sub">Salário R$7k · Itaú R$9k · Outros R$2k</div>
+      <div class="sub">Entradas menores e saídas mais pressionadas</div>
       <div class="sub" id="scPessimistaTime" style="margin-top:6px;color:#fc8181"></div>
     </div>
     <div class="card purple" style="--accent:#b794f4">
@@ -420,25 +494,36 @@
 </div>
 
 <!-- ── IMPORTAR ────────────────────────────────────────────────────────────── -->
-<div id="tab-importar" class="tab-content">
+<div id="tab-importar" class="tab-content" role="tabpanel" aria-labelledby="tab-button-importar">
   <div class="section-title">📥 Importar PDFs Bancários</div>
 
   <!-- Zona de drag & drop -->
-  <div class="import-zone" id="dropZone">
+  <div class="import-zone" id="dropZone" tabindex="0" role="button" aria-label="Selecionar ou arrastar PDFs bancários" aria-describedby="importZoneHelp">
     <div style="font-size:2.8rem;margin-bottom:14px;pointer-events:none">📂</div>
-    <h3 style="pointer-events:none">Arrastar PDF Nubank Conta ou Fatura</h3>
-    <p style="font-size:0.88rem;color:#718096;margin-top:8px;pointer-events:none">
+    <h3 style="pointer-events:none">Arrastar PDF bancário</h3>
+    <p id="importZoneHelp" style="font-size:0.88rem;color:#718096;margin-top:8px;pointer-events:none">
       Arraste e solte o arquivo PDF aqui, ou clique para selecionar.<br>
-      <span style="font-size:0.8rem;color:#4a5568">Detecção automática por nome do arquivo e estrutura do PDF</span>
+      <span style="font-size:0.8rem;color:#4a5568">Detecção automática por nome do arquivo, layout e estrutura do PDF</span>
     </p>
     <input type="file" id="pdfFileInput" accept=".pdf" multiple style="display:none">
-    <button class="btn-primary" style="margin-top:16px;pointer-events:none">
+    <button type="button" id="dropZoneButton" class="btn-primary" style="margin-top:16px">
       📂 Selecionar PDF
     </button>
   </div>
 
+  <div class="helper-panel">
+    <div class="helper-title">Perfis suportados hoje</div>
+    <div class="helper-badges">
+      <span class="badge badge-blue">Extrato Nubank Conta</span>
+      <span class="badge badge-yellow">Fatura Itaú/Visa</span>
+      <span class="badge badge-purple">Fatura Nubank</span>
+    </div>
+    <p class="helper-text">Se um PDF não for reconhecido, o app mostra isso no log de importação para facilitar a criação de um novo perfil.</p>
+  </div>
+
   <!-- Log de importação -->
-  <div id="importLog"></div>
+  <div id="importSummary" class="inline-form-feedback" aria-live="polite"></div>
+  <div id="importLog" aria-live="polite"></div>
 
   <!-- Status da base -->
   <div class="section-title">🗄️ Status da Base de Dados</div>
@@ -452,7 +537,7 @@
   <div style="margin-top:8px;padding:20px 24px;background:#1a202c;border:1px solid #2d3748;border-radius:12px">
     <div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;margin-bottom:8px">⚙️ Configurações</div>
     <p style="font-size:0.85rem;color:#718096;margin-bottom:16px">
-      Exporte suas assinaturas e despesas fixas para compartilhar com amigos. Eles importam o JSON e adaptam os valores para a realidade deles.
+      Exporte ou importe suas assinaturas e despesas fixas em JSON para fazer backup, migrar de navegador ou restaurar sua configuração.
     </p>
     <div class="config-io-actions">
       <button id="configExportBtn" type="button" class="btn-primary">
@@ -460,10 +545,10 @@
       </button>
       <input type="file" id="configFileInput" accept=".json,application/json" style="display:none">
       <button id="configImportBtn" type="button" class="btn-primary">
-        📥 Importar configuração de amigo
+        📥 Importar configuração (JSON)
       </button>
     </div>
-    <div id="configIoResult" class="inline-form-feedback" style="margin-top:14px"></div>
+    <div id="configIoResult" class="inline-form-feedback" style="margin-top:14px" aria-live="polite"></div>
   </div>
 
   <!-- Botão limpar -->
@@ -478,6 +563,7 @@
     </button>
   </div>
 </div>
+</main>
 
 <script type="module" src="js/app.js"></script>
 </body>

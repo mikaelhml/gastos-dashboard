@@ -211,3 +211,11 @@ export function filterExtrato() {
   );
   renderExtrato(filtered);
 }
+
+export function clearExtratoFilters() {
+  document.getElementById('extratoSearch').value = '';
+  document.getElementById('extratoFilterMes').value = '';
+  document.getElementById('extratoFilterTipo').value = '';
+  document.getElementById('extratoFilterCat').value = '';
+  filterExtrato();
+}

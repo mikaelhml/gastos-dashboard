@@ -17,41 +17,57 @@ export function buildAssinaturas(assinaturas, observacoes) {
   // Grid de cards
   const grid = document.getElementById('subGrid');
   grid.innerHTML = '';
-  assinaturas.forEach(a => {
-    grid.innerHTML += `
-      <div class="sub-card">
-        <div class="sub-card-content">
-          <div class="sub-icon">${escapeHtml(a.icon || '✨')}</div>
-          <div class="sub-info">
-            <div class="sub-name">${escapeHtml(a.nome)}</div>
-            <div class="sub-cat">${escapeHtml(a.cat)}</div>
-          </div>
-          <div class="sub-value">${fmt(a.valor)}</div>
-        </div>
-        <div class="sub-card-actions">
-          <button
-            type="button"
-            class="btn-inline-danger"
-            data-assinatura-id="${a.id ?? ''}">
-            Remover
-          </button>
-        </div>
+  if (assinaturas.length === 0) {
+    grid.innerHTML = `
+      <div class="empty-state">
+        <strong>Nenhuma assinatura cadastrada</strong>
+        Use o formulário acima ou converta um lançamento em assinatura.
       </div>`;
-  });
+  } else {
+    assinaturas.forEach(a => {
+      grid.innerHTML += `
+        <div class="sub-card">
+          <div class="sub-card-content">
+            <div class="sub-icon">${escapeHtml(a.icon || '✨')}</div>
+            <div class="sub-info">
+              <div class="sub-name">${escapeHtml(a.nome)}</div>
+              <div class="sub-cat">${escapeHtml(a.cat)}</div>
+            </div>
+            <div class="sub-value">${fmt(a.valor)}</div>
+          </div>
+          <div class="sub-card-actions">
+            <button
+              type="button"
+              class="btn-inline-danger"
+              data-assinatura-id="${a.id ?? ''}">
+              Remover
+            </button>
+          </div>
+        </div>`;
+    });
+  }
 
   // Notas / observações
   const notes  = document.getElementById('subNotes');
   notes.innerHTML = '';
   const colors = { anual: '#f6e05e', monitorar: '#63b3ed', cancelado: '#718096', pontual: '#a0aec0' };
   const labels = { anual: 'ANUAL',   monitorar: 'MONITORAR', cancelado: 'CANCELADO', pontual: 'PONTUAL' };
-  observacoes.forEach(o => {
-    notes.innerHTML += `
-      <div class="note-card">
-        ${escapeHtml(o.icon)} <strong>${escapeHtml(o.nome)}</strong>
-        <span class="badge" style="margin-left:8px;background:#2d3748;color:${colors[o.tipo]}">${labels[o.tipo]}</span>
-        <br><span style="color:#a0aec0;font-size:0.85rem">${escapeHtml(o.detalhe)}</span>
+  if (observacoes.length === 0) {
+    notes.innerHTML = `
+      <div class="empty-state">
+        <strong>Sem observações por enquanto</strong>
+        Itens pontuais ou anuais podem aparecer aqui quando forem cadastrados.
       </div>`;
-  });
+  } else {
+    observacoes.forEach(o => {
+      notes.innerHTML += `
+        <div class="note-card">
+          ${escapeHtml(o.icon)} <strong>${escapeHtml(o.nome)}</strong>
+          <span class="badge" style="margin-left:8px;background:#2d3748;color:${colors[o.tipo]}">${labels[o.tipo]}</span>
+          <br><span style="color:#a0aec0;font-size:0.85rem">${escapeHtml(o.detalhe)}</span>
+        </div>`;
+    });
+  }
 
   bindAssinaturaForm();
   bindRemoveButtons();
@@ -117,4 +133,11 @@ function setFeedback(elementId, message, type) {
 
   feedback.textContent = message || '';
   feedback.className = `inline-form-feedback${type ? ` is-${type}` : ''}`;
+  if (type === 'success') {
+    window.clearTimeout(setFeedback._timer);
+    setFeedback._timer = window.setTimeout(() => {
+      feedback.textContent = '';
+      feedback.className = 'inline-form-feedback';
+    }, 3500);
+  }
 }

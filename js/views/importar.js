@@ -84,7 +84,7 @@ function _bindConfigSection() {
   exportButton.addEventListener('click', async () => {
     resultEl.innerHTML = '';
     await exportConfig();
-    _renderConfigResult('success', 'Configuracao exportada com sucesso. Compartilhe o JSON com quem for usar o dashboard.');
+    _renderConfigResult('success', 'Configuração exportada com sucesso. Guarde o JSON como backup ou para migração.');
   });
 
   importButton.addEventListener('click', () => {
@@ -118,11 +118,23 @@ function _bindConfigSection() {
 function _bindDropZone() {
   const zone  = document.getElementById('dropZone');
   const input = document.getElementById('pdfFileInput');
-  if (!zone || !input) return;
+  const button = document.getElementById('dropZoneButton');
+  if (!zone || !input || !button) return;
 
   // Clique na zona → abre o seletor de arquivo
   zone.addEventListener('click', () => {
     if (!_importando) input.click();
+  });
+  button.addEventListener('click', event => {
+    event.stopPropagation();
+    if (!_importando) input.click();
+  });
+  zone.addEventListener('keydown', event => {
+    if (_importando) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      input.click();
+    }
   });
 
   // Drag over — destaca zona
@@ -157,9 +169,11 @@ function _bindDropZone() {
 async function _processarArquivos(files) {
   if (_importando) return;
   _importando = true;
+  setImportingState(true);
 
   const logEl = document.getElementById('importLog');
   if (logEl) logEl.innerHTML = '';
+  setImportSummary(`Processando ${files.length} arquivo(s)...`, '');
 
   let importados = 0;
 
@@ -170,9 +184,15 @@ async function _processarArquivos(files) {
 
   // Atualiza status da base
   await refreshStatus();
+  await window.refreshDashboard?.();
   _importando = false;
-
-  // Não recarrega automaticamente — usuário decide quando ir ao dashboard
+  setImportingState(false);
+  setImportSummary(
+    importados > 0
+      ? `${importados} arquivo(s) importado(s) com sucesso. O dashboard já foi atualizado.`
+      : 'Nenhum arquivo novo foi importado.',
+    importados > 0 ? 'success' : '',
+  );
 }
 
 /** @returns {boolean} true se importado com sucesso */
@@ -270,17 +290,6 @@ async function _importarUmArquivo(file) {
       '#68d391',
       `Período: ${resultado.mes} — dados salvos com sucesso.`,
     );
-
-    // Botão para recarregar o dashboard manualmente
-    const card = document.getElementById(progressId);
-    if (card) {
-      card.insertAdjacentHTML('beforeend', `
-        <button onclick="location.reload()"
-          style="margin-top:12px;background:#276749;border:1px solid #68d391;color:#c6f6d5;
-                 border-radius:8px;padding:8px 20px;font-size:0.88rem;font-weight:700;cursor:pointer">
-          🔄 Atualizar dashboard
-        </button>`);
-    }
     return true;
 
   } catch (err) {
@@ -319,4 +328,24 @@ function _renderConfigResult(type, message) {
 
   resultEl.className = `inline-form-feedback${type ? ` is-${type}` : ''}`;
   resultEl.textContent = message;
+}
+
+function setImportingState(importando) {
+  const zone = document.getElementById('dropZone');
+  const button = document.getElementById('dropZoneButton');
+  if (zone) {
+    zone.classList.toggle('is-disabled', importando);
+    zone.setAttribute('aria-busy', importando ? 'true' : 'false');
+  }
+  if (button) {
+    button.disabled = importando;
+    button.textContent = importando ? '⏳ Importando...' : '📂 Selecionar PDF';
+  }
+}
+
+function setImportSummary(message, type) {
+  const summary = document.getElementById('importSummary');
+  if (!summary) return;
+  summary.textContent = message || '';
+  summary.className = `inline-form-feedback${type ? ` is-${type}` : ''}`;
 }

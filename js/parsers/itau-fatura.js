@@ -1,6 +1,6 @@
 import { addItem, getAll, bulkAdd, deleteItem } from '../db.js';
 import { categorizar } from '../utils/categorizer.js';
-import { computeHash, extrairGruposPDF, parseBRL, MESES_ABREV } from './pdf-utils.js';
+import { computeHash, extrairEstruturaPDF, parseBRL, MESES_ABREV } from './pdf-utils.js';
 
 const RE_DATA_SLASH = /^\d{2}\/\d{2}(?:\/\d{4})?$/;
 const RE_VALOR_ITEM = /^[\d.]{1,10},\d{2}$/;
@@ -60,7 +60,7 @@ export async function importarItauFatura(file, onProgress = () => {}) {
   }
 
   onProgress(30);
-  const grupos = await extrairGruposPDF(buffer, 3);
+  const { grupos, linhas: linhasRaw } = await extrairEstruturaPDF(buffer, 3);
   const linhasColunadas = montarLinhasColunadas(grupos);
   const linhas = linhasColunadas.flatMap(linha => [linha.left, linha.right].filter(Boolean));
   onProgress(50);
@@ -76,7 +76,7 @@ export async function importarItauFatura(file, onProgress = () => {}) {
   }
 
   const mesFatura = extrairMesFaturaItau(linhas);
-  const lancamentos = parsearLancamentosItau(linhasColunadas, grupos, mesFatura);
+  const lancamentos = parsearLancamentosItau(linhasColunadas, grupos, linhasRaw, mesFatura);
   console.log(`[itau-fatura] "${file.name}": ${lancamentos.length} lançamentos, fatura=${mesFatura || 'não identificada'}`);
 
   if (lancamentos.length === 0) {
@@ -202,7 +202,7 @@ function extrairMesFaturaItau(linhas) {
   return null;
 }
 
-function parsearLancamentosItau(linhasColunadas, grupos, mesFatura) {
+function parsearLancamentosItau(linhasColunadas, grupos, linhasRaw, mesFatura) {
   const colunas = separarPorColuna(linhasColunadas);
   let rowsCompras = [
     ...parseTransactionSections(colunas.left, mesFatura),
@@ -222,6 +222,14 @@ function parsearLancamentosItau(linhasColunadas, grupos, mesFatura) {
 
   if (rowsCompras.length === 0) {
     rowsCompras = parseTransactionRawGroupFallback(grupos, mesFatura);
+  }
+
+  if (rowsCompras.length === 0) {
+    rowsCompras = parseTransactionSlidingGroupFallback(grupos, mesFatura);
+  }
+
+  if (rowsCompras.length === 0) {
+    rowsCompras = parseTransactionRawLinesFallback(linhasRaw, mesFatura);
   }
 
   return rowsCompras.map(lancamento => {
@@ -409,11 +417,56 @@ function parseTransactionRawGroupFallback(grupos, mesFatura) {
   return dedupeLancamentos(lancamentos);
 }
 
-function parseTransactionLine(text, mesFatura) {
-  const match = text.match(RE_TRANSACAO);
-  if (!match) return null;
+function parseTransactionSlidingGroupFallback(grupos, mesFatura) {
+  const prepared = grupos.map(grupo => ({
+    page: grupo[0]?.page ?? 1,
+    tokens: grupo.map(item => normalizeLine(item.str)).filter(Boolean),
+    text: grupo.map(item => normalizeLine(item.str)).filter(Boolean).join(' '),
+  }));
 
-  const [, rawData, rawDesc, rawValor] = match;
+  const lancamentos = [];
+
+  for (let i = 0; i < prepared.length; i++) {
+    const current = prepared[i];
+    if (!current.tokens.some(token => RE_DATA_SLASH.test(token))) continue;
+    if (isIgnorableRow(current.text)) continue;
+
+    let buffer = [...current.tokens];
+    let consumedEnd = i;
+
+    for (let j = i; j < Math.min(i + 5, prepared.length); j++) {
+      if (j > i) {
+        const next = prepared[j];
+        if (next.page !== current.page) break;
+        if (isIgnorableRow(next.text)) continue;
+
+        const hasNewDate = next.tokens.some(token => RE_DATA_SLASH.test(token));
+        const alreadyHasValue = findLastIndex(buffer, token => RE_VALOR_ITEM.test(token)) > buffer.findIndex(token => RE_DATA_SLASH.test(token));
+        if (hasNewDate && alreadyHasValue) {
+          break;
+        }
+
+        buffer = buffer.concat(next.tokens);
+        consumedEnd = j;
+      }
+
+      const parsed = parseTransactionTokens(buffer, mesFatura);
+      if (parsed) {
+        lancamentos.push(parsed);
+        i = consumedEnd;
+        break;
+      }
+    }
+  }
+
+  return dedupeLancamentos(lancamentos);
+}
+
+function parseTransactionLine(text, mesFatura) {
+  const extracted = extractTransactionCandidate(text);
+  if (!extracted) return null;
+
+  const { rawData, rawDesc, rawValor } = extracted;
   const dataInfo = parseDataItau(rawData, mesFatura);
   const valor = parseBRL(rawValor);
   const desc = sanitizarDescricaoItau(rawDesc);
@@ -429,6 +482,45 @@ function parseTransactionLine(text, mesFatura) {
     cat: categorizar(desc),
     valor,
   };
+}
+
+function parseTransactionRawLinesFallback(linhas, mesFatura) {
+  const lancamentos = [];
+
+  for (let i = 0; i < linhas.length; i++) {
+    let buffer = normalizeLine(linhas[i]);
+    if (!buffer || isIgnorableRow(buffer)) continue;
+
+    for (let j = i; j < Math.min(i + 4, linhas.length); j++) {
+      if (j > i) {
+        const next = normalizeLine(linhas[j]);
+        if (!next || isIgnorableRow(next)) continue;
+        buffer = `${buffer} ${next}`.trim();
+      }
+
+      const parsed = parseTransactionLine(buffer, mesFatura);
+      if (parsed) {
+        lancamentos.push(parsed);
+        i = j;
+        break;
+      }
+    }
+  }
+
+  return dedupeLancamentos(lancamentos);
+}
+
+function parseTransactionTokens(tokens, mesFatura) {
+  const dataIndex = tokens.findIndex(token => RE_DATA_SLASH.test(token));
+  const valorIndex = findLastIndex(tokens, token => RE_VALOR_ITEM.test(token));
+  if (dataIndex < 0 || valorIndex <= dataIndex) return null;
+
+  const rawData = tokens[dataIndex];
+  const rawValor = tokens[valorIndex];
+  const rawDesc = tokens.slice(dataIndex + 1, valorIndex).join(' ').trim();
+  if (!rawDesc) return null;
+
+  return parseTransactionLine(`${rawData} ${rawDesc} ${rawValor}`, mesFatura);
 }
 
 function parseInstallmentLine(text) {
@@ -483,6 +575,36 @@ function sanitizarDescricaoItau(rawDesc) {
   desc = desc.replace(/\s+[\d.]{1,10},\d{2}\s*$/g, '').trim();
 
   return desc;
+}
+
+function extractTransactionCandidate(text) {
+  const normalized = normalizeLine(text);
+  if (!normalized) return null;
+
+  const strict = normalized.match(RE_TRANSACAO);
+  if (strict) {
+    return {
+      rawData: strict[1],
+      rawDesc: strict[2],
+      rawValor: strict[3],
+    };
+  }
+
+  const dataMatch = normalized.match(/(\d{2}\/\d{2}(?:\/\d{4})?)/);
+  const valores = [...normalized.matchAll(/([\d.]{1,10},\d{2})/g)];
+  const valorMatch = valores.at(-1);
+  if (!dataMatch || !valorMatch) return null;
+
+  const dataIndex = dataMatch.index ?? -1;
+  const valorIndex = valorMatch.index ?? -1;
+  if (dataIndex < 0 || valorIndex <= dataIndex) return null;
+
+  const rawData = dataMatch[1];
+  const rawValor = valorMatch[1];
+  const rawDesc = normalized.slice(dataIndex + rawData.length, valorIndex).trim();
+  if (!rawDesc) return null;
+
+  return { rawData, rawDesc, rawValor };
 }
 
 function dedupeLancamentos(lancamentos) {

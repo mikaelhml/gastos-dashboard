@@ -13,7 +13,7 @@
  */
 
 const DB_NAME    = 'gastos_db_public';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 const STORE_DEFS = [
   { name: 'assinaturas',          keyPath: 'id',   autoIncrement: true  },
@@ -23,6 +23,7 @@ const STORE_DEFS = [
   { name: 'extrato_transacoes',   keyPath: 'id',   autoIncrement: true  },
   { name: 'extrato_summary',      keyPath: 'mes',  autoIncrement: false },
   { name: 'pdfs_importados',      keyPath: 'hash', autoIncrement: false },
+  { name: 'orcamentos',           keyPath: 'cat',  autoIncrement: false },
 ];
 
 let _db = null;
@@ -155,12 +156,9 @@ export async function clearAllImported() {
 // ── Contagens para status ─────────────────────────────────────────────────────
 
 export async function getStoreCounts() {
-  const [assinaturas, despesas, lancamentos, transacoes, pdfs] = await Promise.all([
+  const [assinaturas, despesas, lancamentos, transacoes, pdfs, orcamentos] = await Promise.all([
     count('assinaturas'),
     count('despesas_fixas'),
     count('lancamentos'),
     count('extrato_transacoes'),
-    count('pdfs_importados'),
-  ]);
-  return { assinaturas, despesas, lancamentos, transacoes, pdfs };
-}
+    count('pdfs_impor

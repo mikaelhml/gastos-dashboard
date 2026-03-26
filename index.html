@@ -20,12 +20,12 @@
 <div class="tabs" role="tablist" aria-label="Navegação principal do dashboard">
   <button type="button" id="tab-button-visao" class="tab active" role="tab" aria-selected="true" aria-controls="tab-visao" onclick="switchTab(event, 'visao')">📊 Visão Geral</button>
   <button type="button" id="tab-button-assinaturas" class="tab" role="tab" aria-selected="false" aria-controls="tab-assinaturas" onclick="switchTab(event, 'assinaturas')">🔁 Assinaturas</button>
-  <button type="button" id="tab-button-despesas" class="tab" role="tab" aria-selected="false" aria-controls="tab-despesas" onclick="switchTab(event, 'despesas')">📋 Despesas Fixas</button>
-  <button type="button" id="tab-button-parcelamentos" class="tab" role="tab" aria-selected="false" aria-controls="tab-parcelamentos" onclick="switchTab(event, 'parcelamentos')">💳 Parcelamentos</button>
+  <button type="button" id="tab-button-despesas" class="tab" role="tab" aria-selected="false" aria-controls="tab-despesas" onclick="switchTab(event, 'despesas')">📋 Despesas & Parcelas</button>
   <button type="button" id="tab-button-lancamentos" class="tab" role="tab" aria-selected="false" aria-controls="tab-lancamentos" onclick="switchTab(event, 'lancamentos')">🧾 Lançamentos</button>
   <button type="button" id="tab-button-extrato" class="tab" role="tab" aria-selected="false" aria-controls="tab-extrato" onclick="switchTab(event, 'extrato')">🏦 Extrato Conta</button>
   <button type="button" id="tab-button-projecao" class="tab" role="tab" aria-selected="false" aria-controls="tab-projecao" onclick="switchTab(event, 'projecao')">🔮 Projeção</button>
   <button type="button" id="tab-button-importar" class="tab" role="tab" aria-selected="false" aria-controls="tab-importar" onclick="switchTab(event, 'importar')">📥 Importar</button>
+  <button type="button" id="tab-button-changelog" class="tab" role="tab" aria-selected="false" aria-controls="tab-changelog" onclick="switchTab(event, 'changelog')">📋 Novidades</button>
 </div>
 
 <main id="mainContent">
@@ -57,6 +57,16 @@
       <div class="value" id="totalSaldoDevedor" style="color:#f6ad55">—</div>
       <div class="sub" id="totalSaldoSub">Parcelamentos em aberto</div>
     </div>
+    <div class="card" style="--accent:#68d391">
+      <div class="label">Saldo Atual da Conta</div>
+      <div class="value" id="saldoAtualConta" style="color:#68d391">—</div>
+      <div class="sub" id="saldoAtualSub">Sem extrato importado</div>
+    </div>
+    <div class="card" style="--accent:#f6ad55">
+      <div class="label">Lançamentos s/ Classificar</div>
+      <div class="value" id="lancamentosNaoClassificados" style="color:#f6ad55">—</div>
+      <div class="sub">Aguardando classificação</div>
+    </div>
   </div>
 
   <div class="chart-grid">
@@ -77,6 +87,8 @@
     </div>
   </div>
 
+  <div id="renovacaoAlerta" style="margin-bottom:24px"></div>
+
   <div class="section-title">📈 Fluxo de Caixa Real — Conta Nubank</div>
   <div class="cards" id="extratoCards"></div>
   <div class="chart-grid" style="margin-bottom:28px">
@@ -88,6 +100,21 @@
       <h3>Saldo Final por Mês</h3>
       <canvas id="chartSaldo"></canvas>
     </div>
+  </div>
+
+  <div class="section-title" id="ultimoMesTitulo">📊 Último Mês Fechado</div>
+  <div id="ultimoMesWrap" style="display:none">
+    <div style="display:grid;grid-template-columns:1fr 320px;gap:24px;margin-bottom:28px;align-items:start">
+      <div class="chart-box" style="margin:0">
+        <canvas id="chartUltimoMes"></canvas>
+      </div>
+      <div id="ultimoMesRank" style="background:#1a202c;border:1px solid #2d3748;border-radius:12px;padding:20px"></div>
+    </div>
+  </div>
+
+  <div class="section-title">🔮 Previsão para o Mês Corrente</div>
+  <div id="previsaoWrap" style="display:none">
+    <div class="cards" id="previsaoGrid" style="margin-bottom:28px"></div>
   </div>
 
   <div class="section-title">📌 Resumo Mensal Comprometido</div>
@@ -118,21 +145,32 @@
       </div>
     </div>
     <form id="assinaturaForm" class="inline-form-grid">
-      <label class="form-field form-field-sm">
+      <div class="form-field" style="grid-column:1/-1">
         <span>Ícone</span>
-        <select id="assinaturaIcon">
-          <option value="✨" selected>✨ Padrão</option>
-          <option value="🎵">🎵 Música</option>
-          <option value="📺">📺 Streaming</option>
-          <option value="☁️">☁️ Nuvem</option>
-          <option value="📚">📚 Estudos</option>
-          <option value="🎮">🎮 Games</option>
-          <option value="💼">💼 Trabalho</option>
-          <option value="📱">📱 App</option>
-          <option value="🧾">🧾 Serviço</option>
-          <option value="💳">💳 Cartão</option>
-        </select>
-      </label>
+        <input type="hidden" id="assinaturaIcon" value="✨">
+        <div class="emoji-picker" id="assinaturaIconPicker">
+          <button type="button" class="emoji-btn selected" data-emoji="✨" onclick="selectEmoji('assinaturaIcon','assinaturaIconPreview','assinaturaIconPicker',this,'✨')">✨</button>
+          <button type="button" class="emoji-btn" data-emoji="🎵" onclick="selectEmoji('assinaturaIcon','assinaturaIconPreview','assinaturaIconPicker',this,'🎵')">🎵</button>
+          <button type="button" class="emoji-btn" data-emoji="📺" onclick="selectEmoji('assinaturaIcon','assinaturaIconPreview','assinaturaIconPicker',this,'📺')">📺</button>
+          <button type="button" class="emoji-btn" data-emoji="☁️" onclick="selectEmoji('assinaturaIcon','assinaturaIconPreview','assinaturaIconPicker',this,'☁️')">☁️</button>
+          <button type="button" class="emoji-btn" data-emoji="📚" onclick="selectEmoji('assinaturaIcon','assinaturaIconPreview','assinaturaIconPicker',this,'📚')">📚</button>
+          <button type="button" class="emoji-btn" data-emoji="🎮" onclick="selectEmoji('assinaturaIcon','assinaturaIconPreview','assinaturaIconPicker',this,'🎮')">🎮</button>
+          <button type="button" class="emoji-btn" data-emoji="💼" onclick="selectEmoji('assinaturaIcon','assinaturaIconPreview','assinaturaIconPicker',this,'💼')">💼</button>
+          <button type="button" class="emoji-btn" data-emoji="📱" onclick="selectEmoji('assinaturaIcon','assinaturaIconPreview','assinaturaIconPicker',this,'📱')">📱</button>
+          <button type="button" class="emoji-btn" data-emoji="🧾" onclick="selectEmoji('assinaturaIcon','assinaturaIconPreview','assinaturaIconPicker',this,'🧾')">🧾</button>
+          <button type="button" class="emoji-btn" data-emoji="💳" onclick="selectEmoji('assinaturaIcon','assinaturaIconPreview','assinaturaIconPicker',this,'💳')">💳</button>
+          <button type="button" class="emoji-btn" data-emoji="🏠" onclick="selectEmoji('assinaturaIcon','assinaturaIconPreview','assinaturaIconPicker',this,'🏠')">🏠</button>
+          <button type="button" class="emoji-btn" data-emoji="🚗" onclick="selectEmoji('assinaturaIcon','assinaturaIconPreview','assinaturaIconPicker',this,'🚗')">🚗</button>
+          <button type="button" class="emoji-btn" data-emoji="🍕" onclick="selectEmoji('assinaturaIcon','assinaturaIconPreview','assinaturaIconPicker',this,'🍕')">🍕</button>
+          <button type="button" class="emoji-btn" data-emoji="❤️" onclick="selectEmoji('assinaturaIcon','assinaturaIconPreview','assinaturaIconPicker',this,'❤️')">❤️</button>
+          <button type="button" class="emoji-btn" data-emoji="⚡" onclick="selectEmoji('assinaturaIcon','assinaturaIconPreview','assinaturaIconPicker',this,'⚡')">⚡</button>
+          <button type="button" class="emoji-btn" data-emoji="🎯" onclick="selectEmoji('assinaturaIcon','assinaturaIconPreview','assinaturaIconPicker',this,'🎯')">🎯</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+          <span style="font-size:0.74rem;color:#718096">Selecionado:</span>
+          <span class="emoji-preview" id="assinaturaIconPreview">✨</span>
+        </div>
+      </div>
       <label class="form-field">
         <span>Nome</span>
         <input id="assinaturaNome" type="text" required placeholder="Ex.: Spotify">
@@ -203,11 +241,9 @@
       <tbody id="fixedTable"></tbody>
     </table>
   </div>
-</div>
 
-<!-- ── PARCELAMENTOS ───────────────────────────────────────────────────────── -->
-<div id="tab-parcelamentos" class="tab-content" role="tabpanel" aria-labelledby="tab-button-parcelamentos">
-  <div class="section-title">🏦 Financiamentos</div>
+  <!-- Parcelamentos e Financiamentos mesclados na mesma aba -->
+  <div class="section-title" style="margin-top:8px">🏦 Financiamentos</div>
   <div class="financ-summary">
     <div class="sb-item"><span class="sb-label" style="color:#90cdf4">Parcela total/mês:</span><span class="sb-value" id="financTotalBar">—</span></div>
     <div class="divider" style="background:#2c5282"></div>
@@ -237,18 +273,31 @@
   </div>
 </div>
 
-<!-- ── LANÇAMENTOS ─────────────────────────────────────────────────────────── -->
+<!-- ── LANÇAMENTOS─────────────────────────────────────────────────────────── -->
 <div id="tab-lancamentos" class="tab-content" role="tabpanel" aria-labelledby="tab-button-lancamentos">
   <div class="filters">
     <input type="text" id="searchInput" placeholder="🔍 Buscar por descrição..." aria-label="Buscar lançamentos por descrição" oninput="filterLancamentos()">
     <select id="filterFatura" aria-label="Filtrar lançamentos por fatura" onchange="filterLancamentos()"></select>
     <select id="filterCat" aria-label="Filtrar lançamentos por categoria" onchange="filterLancamentos()"></select>
+    <select id="filterOrigem" aria-label="Filtrar por origem" onchange="filterLancamentos()">
+      <option value="">Todos</option>
+      <option value="cartao">💳 Cartão</option>
+      <option value="conta">🏦 Conta</option>
+    </select>
+    <select id="filterTipo" aria-label="Filtrar por tipo de classificação" onchange="filterLancamentos()">
+      <option value="">Todos os tipos</option>
+      <option value="nao_classificado">Não classificados</option>
+      <option value="assinatura">Assinatura</option>
+      <option value="despesa">Despesa Fixa</option>
+      <option value="parcelamento">Parcelamento</option>
+      <option value="financiamento">Financiamento</option>
+    </select>
     <button type="button" class="btn-inline-secondary btn-filter-clear" onclick="clearLancamentosFilters()">Limpar filtros</button>
   </div>
   <div class="table-wrap">
     <table>
       <thead>
-        <tr><th>#</th><th>Data</th><th>Fatura</th><th>Descrição</th><th>Categoria</th><th style="text-align:right">Valor</th><th style="text-align:right">Ações</th></tr>
+        <tr><th>#</th><th>Data</th><th>Fatura / Mês</th><th>Descrição</th><th>Categoria</th><th style="text-align:right">Valor</th><th style="text-align:right">Ações</th></tr>
       </thead>
       <tbody id="lancamentosTable"></tbody>
     </table>
@@ -261,37 +310,50 @@
       <div class="modal-header">
         <div>
           <div class="modal-title" id="lancamentoConvertTitle">Converter lançamento</div>
-          <div class="modal-subtitle" id="lancamentoConvertSubtitle">Revise os dados antes de salvar.</div>
+          <div class="modal-subtitle" id="lancamentoConvertSubtitle"></div>
         </div>
-        <button type="button" class="btn-inline-secondary" id="lancamentoConvertCancelTop">Fechar</button>
+        <button type="button" class="modal-close-btn" id="lancamentoConvertCancelTop" aria-label="Fechar">✕</button>
       </div>
+
+      <div id="convertPreviewCard" style="border:1px solid #2d3748;border-radius:10px;padding:14px 16px"></div>
 
       <input type="hidden" id="convertLancamentoId">
       <input type="hidden" id="convertAction">
 
       <div class="modal-grid">
-        <label class="form-field form-field-sm" id="convertIconField">
+        <div class="form-field" id="convertIconField">
           <span>Ícone</span>
-          <select id="convertIcon">
-            <option value="✨">✨ Padrão</option>
-            <option value="🎵">🎵 Música</option>
-            <option value="📺">📺 Streaming</option>
-            <option value="☁️">☁️ Nuvem</option>
-            <option value="📚">📚 Estudos</option>
-            <option value="🎮">🎮 Games</option>
-            <option value="💼">💼 Trabalho</option>
-            <option value="📱">📱 App</option>
-            <option value="🧾">🧾 Serviço</option>
-            <option value="💳">💳 Cartão</option>
-          </select>
-        </label>
+          <input type="hidden" id="convertIcon" value="💳">
+          <div class="emoji-picker" id="convertIconPicker">
+            <button type="button" class="emoji-btn" data-emoji="✨" onclick="selectEmoji('convertIcon','convertIconPreview','convertIconPicker',this,'✨')">✨</button>
+            <button type="button" class="emoji-btn" data-emoji="🎵" onclick="selectEmoji('convertIcon','convertIconPreview','convertIconPicker',this,'🎵')">🎵</button>
+            <button type="button" class="emoji-btn" data-emoji="📺" onclick="selectEmoji('convertIcon','convertIconPreview','convertIconPicker',this,'📺')">📺</button>
+            <button type="button" class="emoji-btn" data-emoji="☁️" onclick="selectEmoji('convertIcon','convertIconPreview','convertIconPicker',this,'☁️')">☁️</button>
+            <button type="button" class="emoji-btn" data-emoji="📚" onclick="selectEmoji('convertIcon','convertIconPreview','convertIconPicker',this,'📚')">📚</button>
+            <button type="button" class="emoji-btn" data-emoji="🎮" onclick="selectEmoji('convertIcon','convertIconPreview','convertIconPicker',this,'🎮')">🎮</button>
+            <button type="button" class="emoji-btn" data-emoji="💼" onclick="selectEmoji('convertIcon','convertIconPreview','convertIconPicker',this,'💼')">💼</button>
+            <button type="button" class="emoji-btn" data-emoji="📱" onclick="selectEmoji('convertIcon','convertIconPreview','convertIconPicker',this,'📱')">📱</button>
+            <button type="button" class="emoji-btn" data-emoji="🧾" onclick="selectEmoji('convertIcon','convertIconPreview','convertIconPicker',this,'🧾')">🧾</button>
+            <button type="button" class="emoji-btn selected" data-emoji="💳" onclick="selectEmoji('convertIcon','convertIconPreview','convertIconPicker',this,'💳')">💳</button>
+            <button type="button" class="emoji-btn" data-emoji="🏠" onclick="selectEmoji('convertIcon','convertIconPreview','convertIconPicker',this,'🏠')">🏠</button>
+            <button type="button" class="emoji-btn" data-emoji="🚗" onclick="selectEmoji('convertIcon','convertIconPreview','convertIconPicker',this,'🚗')">🚗</button>
+            <button type="button" class="emoji-btn" data-emoji="🍕" onclick="selectEmoji('convertIcon','convertIconPreview','convertIconPicker',this,'🍕')">🍕</button>
+            <button type="button" class="emoji-btn" data-emoji="❤️" onclick="selectEmoji('convertIcon','convertIconPreview','convertIconPicker',this,'❤️')">❤️</button>
+            <button type="button" class="emoji-btn" data-emoji="⚡" onclick="selectEmoji('convertIcon','convertIconPreview','convertIconPicker',this,'⚡')">⚡</button>
+            <button type="button" class="emoji-btn" data-emoji="🎯" onclick="selectEmoji('convertIcon','convertIconPreview','convertIconPicker',this,'🎯')">🎯</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+            <span style="font-size:0.74rem;color:#718096">Selecionado:</span>
+            <span class="emoji-preview" id="convertIconPreview">💳</span>
+          </div>
+        </div>
         <label class="form-field">
           <span>Categoria</span>
-          <input id="convertCategoria" type="text" required>
+          <input id="convertCategoria" type="text" required placeholder="Ex.: Entretenimento">
         </label>
-        <label class="form-field">
-          <span>Descrição</span>
-          <input id="convertDescricao" type="text" required>
+        <label class="form-field" style="grid-column:1/-1">
+          <span>Descrição / Nome</span>
+          <input id="convertDescricao" type="text" required placeholder="Como vai aparecer nas abas">
         </label>
         <label class="form-field">
           <span>Valor mensal</span>
@@ -323,9 +385,61 @@
       </div>
     </form>
   </dialog>
+
+  <!-- ── EDITAR LANÇAMENTO ─────────────────────────────────────────────────── -->
+  <dialog id="lancamentoEditDialog" class="app-modal">
+    <form id="lancamentoEditForm" class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">Editar lançamento</div>
+          <div class="modal-subtitle">Altere os campos e salve</div>
+        </div>
+        <button type="button" class="modal-close-btn" id="lancamentoEditCancelTop" aria-label="Fechar">✕</button>
+      </div>
+
+      <input type="hidden" id="editLancamentoId">
+
+      <div class="modal-grid">
+        <label class="form-field">
+          <span>Data</span>
+          <input id="editData" type="text" placeholder="DD/MM/AAAA" required>
+        </label>
+        <label class="form-field">
+          <span>Fatura</span>
+          <input id="editFatura" type="text" placeholder="Ex.: Jan/2026" required>
+        </label>
+        <label class="form-field" style="grid-column:1/-1">
+          <span>Descrição</span>
+          <input id="editDesc" type="text" required>
+        </label>
+        <label class="form-field">
+          <span>Categoria</span>
+          <input id="editCat" type="text" required>
+        </label>
+        <label class="form-field">
+          <span>Valor (R$)</span>
+          <input id="editValor" type="number" min="0.01" step="0.01" required>
+        </label>
+        <label class="form-field">
+          <span>Parcela (ex.: 3/12)</span>
+          <input id="editParcela" type="text" placeholder="Opcional">
+        </label>
+      </div>
+
+      <div id="editClassificacaoInfo" style="display:none;margin-top:8px;padding:10px 14px;background:#1a202c;border-radius:8px;border:1px solid #2d3748"></div>
+
+      <div id="lancamentoEditFeedback" class="inline-form-feedback" aria-live="polite"></div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-inline-secondary" id="lancamentoEditCancel">Cancelar</button>
+        <button type="button" class="btn-inline-secondary btn-danger" id="lancamentoEditRemoveClass" style="display:none">Remover classificação</button>
+        <button type="submit" class="btn-primary">Salvar alterações</button>
+      </div>
+    </form>
+  </dialog>
 </div>
 
-<!-- ── EXTRATO CONTA ───────────────────────────────────────────────────────── -->
+<!-- ── EXTRATO CONTA───────────────────────────────────────────────────────── -->
 <div id="tab-extrato" class="tab-content" role="tabpanel" aria-labelledby="tab-button-extrato">
   <div class="summary-bar">
     <div class="sb-item"><span class="sb-label">Período:</span><span class="sb-value" id="extratoPeriodo">—</span></div>
@@ -345,6 +459,13 @@
     <div class="chart-box">
       <h3>Composição Saídas por Mês</h3>
       <canvas id="chartExtratoBarCats"></canvas>
+    </div>
+  </div>
+
+  <div class="chart-grid" style="margin-bottom:24px">
+    <div class="chart-box" style="grid-column:span 2">
+      <h3>📈 Tendência por Categoria (meses)</h3>
+      <canvas id="chartExtratoTendencia" style="max-height:300px"></canvas>
     </div>
   </div>
 
@@ -387,184 +508,4 @@
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">
       <div>
         <label style="font-size:0.75rem;color:#718096;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px">💰 Salário líquido/mês</label>
-        <input id="pSalario" type="number" value="0" min="0" step="100"
-          style="width:100%;background:#0f1117;border:1px solid #4a5568;border-radius:8px;padding:10px 14px;color:#68d391;font-size:1.1rem;font-weight:700;outline:none">
-        <div style="font-size:0.72rem;color:#718096;margin-top:4px">Informe a sua renda mensal prevista.</div>
-      </div>
-      <div>
-        <label style="font-size:0.75rem;color:#718096;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px">➕ Renda adicional/mês</label>
-        <input id="pRendaExtra" type="number" value="0" min="0" step="100"
-          style="width:100%;background:#0f1117;border:1px solid #4a5568;border-radius:8px;padding:10px 14px;color:#76e4f7;font-size:1.1rem;font-weight:700;outline:none">
-        <div style="font-size:0.72rem;color:#718096;margin-top:4px">Freela, aluguéis, resgates etc.</div>
-      </div>
-      <div>
-        <label style="font-size:0.75rem;color:#718096;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px">🏦 Fatura do cartão/mês</label>
-        <input id="pItau" type="number" value="0" min="0" step="100"
-          style="width:100%;background:#0f1117;border:1px solid #4a5568;border-radius:8px;padding:10px 14px;color:#fc8181;font-size:1.1rem;font-weight:700;outline:none">
-        <div style="font-size:0.72rem;color:#718096;margin-top:4px">Some aqui a média mensal esperada da sua fatura.</div>
-      </div>
-      <div>
-        <label style="font-size:0.75rem;color:#718096;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px">📤 Outros gastos variáveis/mês</label>
-        <input id="pOutros" type="number" value="0" min="0" step="100"
-          style="width:100%;background:#0f1117;border:1px solid #4a5568;border-radius:8px;padding:10px 14px;color:#f6ad55;font-size:1.1rem;font-weight:700;outline:none">
-        <div style="font-size:0.72rem;color:#718096;margin-top:4px">Inclua gastos variáveis não cobertos pelos fixos.</div>
-      </div>
-      <div>
-        <label style="font-size:0.75rem;color:#718096;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px">📅 Meses a projetar</label>
-        <select id="pMeses" style="width:100%;background:#0f1117;border:1px solid #4a5568;border-radius:8px;padding:10px 14px;color:#e2e8f0;font-size:1rem;outline:none">
-          <option value="6">6 meses</option>
-          <option value="12">12 meses</option>
-          <option value="24">24 meses</option>
-        </select>
-      </div>
-    </div>
-    <div style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-      <button onclick="recalcularProjecao()" style="background:#4299e1;border:none;border-radius:8px;padding:10px 24px;color:#fff;font-size:0.95rem;font-weight:700;cursor:pointer">
-        🔄 Recalcular Projeção
-      </button>
-      <div id="pResultadoMensal" style="font-size:0.9rem;color:#a0aec0"></div>
-    </div>
-  </div>
-
-  <div class="section-title">📊 Cenários Comparativos</div>
-  <div class="cards" style="margin-bottom:24px">
-    <div class="card green" style="--accent:#68d391">
-      <div class="label">🌟 Otimista</div>
-      <div class="value" id="scOtimistaVal" style="font-size:1.1rem;color:#68d391">—</div>
-      <div class="sub">Entradas maiores e saídas mais leves</div>
-      <div class="sub" id="scOtimistaTime" style="margin-top:6px;color:#68d391"></div>
-    </div>
-    <div class="card yellow" style="--accent:#f6e05e">
-      <div class="label">⚖️ Realista</div>
-      <div class="value" id="scRealistaVal" style="font-size:1.1rem;color:#f6e05e">—</div>
-      <div class="sub">Referência intermediária para comparação</div>
-      <div class="sub" id="scRealistaTime" style="margin-top:6px;color:#f6e05e"></div>
-    </div>
-    <div class="card red" style="--accent:#fc8181">
-      <div class="label">⚠️ Pessimista</div>
-      <div class="value" id="scPessimistaVal" style="font-size:1.1rem;color:#fc8181">—</div>
-      <div class="sub">Entradas menores e saídas mais pressionadas</div>
-      <div class="sub" id="scPessimistaTime" style="margin-top:6px;color:#fc8181"></div>
-    </div>
-    <div class="card purple" style="--accent:#b794f4">
-      <div class="label">🎯 Ponto de Equilíbrio</div>
-      <div class="value" id="scEquilibrioVal" style="font-size:1.1rem;color:#b794f4">—</div>
-      <div class="sub">Salário mínimo para não perder saldo</div>
-      <div class="sub" id="scEquilibrioSub" style="margin-top:6px;color:#718096"></div>
-    </div>
-  </div>
-
-  <div class="chart-grid" style="margin-bottom:24px">
-    <div class="chart-box" style="grid-column:span 2">
-      <h3>Evolução do Saldo — Histórico + Projeção (3 cenários)</h3>
-      <canvas id="chartProjecaoSaldo" style="max-height:320px"></canvas>
-    </div>
-  </div>
-  <div class="chart-grid" style="margin-bottom:24px">
-    <div class="chart-box">
-      <h3>Entradas vs Saídas Projetadas</h3>
-      <canvas id="chartProjecaoBarras"></canvas>
-    </div>
-    <div class="chart-box">
-      <h3>Composição das Saídas Mensais</h3>
-      <canvas id="chartProjecaoPizza"></canvas>
-    </div>
-  </div>
-
-  <div class="section-title">📋 Projeção Mês a Mês</div>
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Mês</th>
-          <th style="text-align:right">Salário</th>
-          <th style="text-align:right">+ Renda Extra</th>
-          <th style="text-align:right">Fixos (conta)</th>
-          <th style="text-align:right">Fatura Itaú</th>
-          <th style="text-align:right">Outros</th>
-          <th style="text-align:right">Total Saídas</th>
-          <th style="text-align:right">Resultado</th>
-          <th style="text-align:right">Saldo Projetado</th>
-        </tr>
-      </thead>
-      <tbody id="projecaoTable"></tbody>
-    </table>
-  </div>
-  <div id="projecaoAlerta" style="margin-top:16px"></div>
-</div>
-
-<!-- ── IMPORTAR ────────────────────────────────────────────────────────────── -->
-<div id="tab-importar" class="tab-content" role="tabpanel" aria-labelledby="tab-button-importar">
-  <div class="section-title">📥 Importar PDFs Bancários</div>
-
-  <!-- Zona de drag & drop -->
-  <div class="import-zone" id="dropZone" tabindex="0" role="button" aria-label="Selecionar ou arrastar PDFs bancários" aria-describedby="importZoneHelp">
-    <div style="font-size:2.8rem;margin-bottom:14px;pointer-events:none">📂</div>
-    <h3 style="pointer-events:none">Arrastar PDF bancário</h3>
-    <p id="importZoneHelp" style="font-size:0.88rem;color:#718096;margin-top:8px;pointer-events:none">
-      Arraste e solte o arquivo PDF aqui, ou clique para selecionar.<br>
-      <span style="font-size:0.8rem;color:#4a5568">Detecção automática por nome do arquivo, layout e estrutura do PDF</span>
-    </p>
-    <input type="file" id="pdfFileInput" accept=".pdf" multiple style="display:none">
-    <button type="button" id="dropZoneButton" class="btn-primary" style="margin-top:16px">
-      📂 Selecionar PDF
-    </button>
-  </div>
-
-  <div class="helper-panel">
-    <div class="helper-title">Perfis suportados hoje</div>
-    <div class="helper-badges">
-      <span class="badge badge-blue">Extrato Nubank Conta</span>
-      <span class="badge badge-yellow">Fatura Itaú/Visa</span>
-      <span class="badge badge-purple">Fatura Nubank</span>
-    </div>
-    <p class="helper-text">Se um PDF não for reconhecido, o app mostra isso no log de importação para facilitar a criação de um novo perfil.</p>
-  </div>
-
-  <!-- Log de importação -->
-  <div id="importSummary" class="inline-form-feedback" aria-live="polite"></div>
-  <div id="importLog" aria-live="polite"></div>
-
-  <!-- Status da base -->
-  <div class="section-title">🗄️ Status da Base de Dados</div>
-  <div class="db-status-grid" id="dbStatusGrid">
-    <div class="db-status-card">
-      <div class="ds-label">Carregando...</div>
-      <div class="ds-count">—</div>
-    </div>
-  </div>
-
-  <div style="margin-top:8px;padding:20px 24px;background:#1a202c;border:1px solid #2d3748;border-radius:12px">
-    <div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;margin-bottom:8px">⚙️ Configurações</div>
-    <p style="font-size:0.85rem;color:#718096;margin-bottom:16px">
-      Exporte ou importe suas assinaturas e despesas fixas em JSON para fazer backup, migrar de navegador ou restaurar sua configuração.
-    </p>
-    <div class="config-io-actions">
-      <button id="configExportBtn" type="button" class="btn-primary">
-        📤 Exportar configuração (JSON)
-      </button>
-      <input type="file" id="configFileInput" accept=".json,application/json" style="display:none">
-      <button id="configImportBtn" type="button" class="btn-primary">
-        📥 Importar configuração (JSON)
-      </button>
-    </div>
-    <div id="configIoResult" class="inline-form-feedback" style="margin-top:14px" aria-live="polite"></div>
-  </div>
-
-  <!-- Botão limpar -->
-  <div style="margin-top:8px;padding:20px 24px;background:#1a202c;border:1px solid #2d3748;border-radius:12px">
-    <div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;margin-bottom:8px">🗑️ Limpar Base Importada</div>
-    <p style="font-size:0.85rem;color:#718096;margin-bottom:16px">
-      Remove todas as transações do extrato, lançamentos de fatura e registro de PDFs importados.<br>
-      <strong style="color:#a0aec0">Assinaturas e despesas fixas são mantidas.</strong>
-    </p>
-    <button class="btn-danger" onclick="clearBase()">
-      🗑️ Limpar todos os dados importados
-    </button>
-  </div>
-</div>
-</main>
-
-<script type="module" src="js/app.js"></script>
-</body>
-</html>
+        <input id="pSalario" type="number" value="0" min=

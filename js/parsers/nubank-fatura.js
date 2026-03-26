@@ -35,9 +35,9 @@ export async function importarNubankFatura(file, onProgress = () => {}) {
     return { importado: 0, duplicata: true, mes: '' };
   }
 
-  onProgress(30);
-  const linhas = await extrairLinhasPDF(buffer);
   onProgress(20);
+  const linhas = await extrairLinhasPDF(buffer);
+  onProgress(30);
 
   const emissor = detectarEmissorFatura(linhas);
   if (emissor !== 'nubank') {

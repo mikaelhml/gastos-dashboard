@@ -2,6 +2,34 @@ import { fmt } from '../utils/formatters.js';
 import { addItem, deleteItem } from '../db.js';
 import { escapeHtml } from '../utils/dom.js';
 
+// Category → accent color mapping for sub-card top border
+const CAT_ACCENT = {
+  Entretenimento: '#b794f4',
+  Música:         '#fc8181',
+  Streaming:      '#63b3ed',
+  Nuvem:          '#76e4f7',
+  Educação:       '#f6e05e',
+  Games:          '#68d391',
+  Trabalho:       '#f6ad55',
+  Produtividade:  '#f6ad55',
+  Telecom:        '#a0aec0',
+  Saúde:          '#68d391',
+  Financeiro:     '#63b3ed',
+};
+
+function getRenewalBadge() {
+  const today = new Date();
+  const next1st = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  const daysUntil = Math.ceil((next1st - today) / (1000 * 60 * 60 * 24));
+  if (daysUntil <= 7) {
+    return `<span class="renewal-badge-urgent">🔔 Renova em ${daysUntil} dia${daysUntil !== 1 ? 's' : ''}</span>`;
+  }
+  if (daysUntil <= 30) {
+    return `<span class="renewal-badge-soon">🔔 Renova em ${daysUntil} dias</span>`;
+  }
+  return '';
+}
+
 /**
  * Renderiza a aba Assinaturas.
  * @param {Array} assinaturas
@@ -14,6 +42,8 @@ export function buildAssinaturas(assinaturas, observacoes) {
   document.getElementById('subAnualBar').textContent = fmt(total * 12);
   document.getElementById('subCount').textContent    = assinaturas.length;
 
+  const renewalBadge = getRenewalBadge();
+
   // Grid de cards
   const grid = document.getElementById('subGrid');
   grid.innerHTML = '';
@@ -25,23 +55,29 @@ export function buildAssinaturas(assinaturas, observacoes) {
       </div>`;
   } else {
     assinaturas.forEach(a => {
+      const accent = CAT_ACCENT[a.cat] || '#63b3ed';
       grid.innerHTML += `
-        <div class="sub-card">
-          <div class="sub-card-content">
+        <div class="sub-card" style="--sub-accent:${accent}">
+          <div class="sub-card-top">
             <div class="sub-icon">${escapeHtml(a.icon || '✨')}</div>
             <div class="sub-info">
               <div class="sub-name">${escapeHtml(a.nome)}</div>
-              <div class="sub-cat">${escapeHtml(a.cat)}</div>
+              <div class="sub-cat"><span class="badge badge-blue" style="font-size:0.7rem">${escapeHtml(a.cat)}</span></div>
             </div>
-            <div class="sub-value">${fmt(a.valor)}</div>
-          </div>
-          <div class="sub-card-actions">
             <button
               type="button"
               class="btn-inline-danger"
+              style="align-self:flex-start"
               data-assinatura-id="${a.id ?? ''}">
-              Remover
+              ✕
             </button>
+          </div>
+          <div class="sub-card-bottom">
+            <div>
+              <div class="sub-value">${fmt(a.valor)}<span style="font-size:0.78rem;font-weight:400;color:#718096">/mês</span></div>
+              <div class="sub-anual">${fmt(a.valor * 12)}/ano</div>
+            </div>
+            ${renewalBadge}
           </div>
         </div>`;
     });
@@ -80,14 +116,14 @@ function bindAssinaturaForm() {
   form.onsubmit = async event => {
     event.preventDefault();
 
-    const iconInput = document.getElementById('assinaturaIcon');
-    const nomeInput = document.getElementById('assinaturaNome');
-    const catInput = document.getElementById('assinaturaCategoria');
+    const iconInput  = document.getElementById('assinaturaIcon');
+    const nomeInput  = document.getElementById('assinaturaNome');
+    const catInput   = document.getElementById('assinaturaCategoria');
     const valorInput = document.getElementById('assinaturaValor');
 
-    const icon = iconInput.value || '✨';
-    const nome = nomeInput.value.trim();
-    const cat = catInput.value.trim();
+    const icon  = iconInput.value || '✨';
+    const nome  = nomeInput.value.trim();
+    const cat   = catInput.value.trim();
     const valor = Number(valorInput.value);
 
     if (!nome || !cat || !Number.isFinite(valor) || valor <= 0) {
@@ -99,45 +135,5 @@ function bindAssinaturaForm() {
 
     form.reset();
     iconInput.value = '✨';
-    setFeedback('assinaturaFormFeedback', 'Assinatura adicionada com sucesso.', 'success');
-    await window.refreshDashboard?.();
-  };
-}
-
-function bindRemoveButtons() {
-  document.querySelectorAll('[data-assinatura-id]').forEach(button => {
-    button.onclick = async () => {
-      const rawId = button.getAttribute('data-assinatura-id');
-      if (!rawId) return;
-      const id = parseStoreKey(rawId);
-      const nome = button.closest('.sub-card')?.querySelector('.sub-name')?.textContent?.trim() || 'esta assinatura';
-      const ok = confirm(`Remover ${nome}?`);
-      if (!ok) return;
-
-      await deleteItem('assinaturas', id);
-      setFeedback('assinaturaFormFeedback', 'Assinatura removida com sucesso.', 'success');
-      await window.refreshDashboard?.();
-    };
-  });
-}
-
-function parseStoreKey(value) {
-  if (value === null || value === undefined || value === '') return value;
-  const numeric = Number(value);
-  return Number.isNaN(numeric) ? value : numeric;
-}
-
-function setFeedback(elementId, message, type) {
-  const feedback = document.getElementById(elementId);
-  if (!feedback) return;
-
-  feedback.textContent = message || '';
-  feedback.className = `inline-form-feedback${type ? ` is-${type}` : ''}`;
-  if (type === 'success') {
-    window.clearTimeout(setFeedback._timer);
-    setFeedback._timer = window.setTimeout(() => {
-      feedback.textContent = '';
-      feedback.className = 'inline-form-feedback';
-    }, 3500);
-  }
-}
+    window.syncEmojiPicker?.('assinaturaIconPicker', 'assinaturaIconPreview', '✨');
+    setFeedback('assinaturaFormFeedba

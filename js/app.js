@@ -58,6 +58,7 @@ async function loadDashboardData() {
     lancamentos,
     extratoTransacoes,
     extratoSummary,
+    orcamentos,
   ] = await Promise.all([
     getAll('assinaturas'),
     getAll('observacoes'),
@@ -65,6 +66,7 @@ async function loadDashboardData() {
     getAll('lancamentos'),
     getAll('extrato_transacoes'),
     getAll('extrato_summary'),
+    getAll('orcamentos'),
   ]);
 
   extratoSummary.sort((a, b) => {
@@ -82,6 +84,7 @@ async function loadDashboardData() {
     lancamentos,
     extratoTransacoes,
     extratoSummary,
+    orcamentos,
   };
 }
 
@@ -93,13 +96,14 @@ async function renderDashboard() {
     lancamentos,
     extratoTransacoes,
     extratoSummary,
+    orcamentos,
   } = await loadDashboardData();
 
-  buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, extratoTransacoes);
+  buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, extratoTransacoes, lancamentos);
   buildAssinaturas(assinaturas, observacoes);
   buildDespesasFixas(despesasFixas);
   buildParcelamentos(despesasFixas, lancamentos);
-  initLancamentos(lancamentos);
+  initLancamentos(lancamentos, extratoTransacoes, assinaturas, despesasFixas);
   initExtrato(extratoTransacoes, extratoSummary);
   initProjecao(despesasFixas, extratoSummary);
   await buildImportar();
@@ -161,6 +165,5 @@ window.recalcularProjecao = recalcularProjecao;
 window.clearBase          = clearBase;
 window.refreshDashboard   = refreshDashboard;
 
-// ── Executa ───────────────────────────────────────────────────────────────────
-
-init();
+// Emoji picker helpers — usados pelos onclick inline no HTML
+window.selectEmoji = function

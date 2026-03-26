@@ -2,6 +2,7 @@ import { extrairLinhasPDF } from './pdf-utils.js';
 import { importarNubankConta } from './nubank-conta.js';
 import { importarNubankFatura } from './nubank-fatura.js';
 import { importarItauFatura, pareceFaturaItauPorNome } from './itau-fatura.js';
+import { importarItauConta } from './itau-conta.js';
 
 const CONTA_FILE_RE = /^NU_\d+_\d{2}[A-Z]{3}\d{4}_\d{2}[A-Z]{3}\d{4}\.PDF$/i;
 
@@ -16,6 +17,17 @@ export const PDF_LAYOUT_PROFILES = [
     matchContent: ({ textSample }) =>
       textSample.includes('TOTAL DE ENTRADAS') &&
       (textSample.includes('SALDO FINAL') || textSample.includes('SALDO INICIAL')),
+  },
+  {
+    id: 'itau-conta',
+    label: 'Extrato Itaú Conta',
+    badgeClass: 'badge-green',
+    phaseLabel: 'Extrato conta',
+    importer: importarItauConta,
+    matchFileName: fileName => /itau_extrato_/i.test(String(fileName ?? '')),
+    matchContent: ({ textSample }) =>
+      textSample.includes('SALDO DO DIA') &&
+      (textSample.includes('ITAU') || textSample.includes('EXTRATO CONTA')),
   },
   {
     id: 'itau-fatura',

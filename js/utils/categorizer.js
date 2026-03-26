@@ -12,11 +12,11 @@ const REGRAS = [
   // Família — pessoas conhecidas pelo extrato real
   { cat: 'Família',        keywords: ['DANUZI', 'GERCINA', 'FRANCISCA RODRIGUES'] },
 
-  // Rendimento — juros da conta Nubank (NuConta)
-  { cat: 'Rendimento',     keywords: ['RENDIMENTO', 'REND.', 'REND ', 'JUROS CREDIT', 'NUCONTA', 'REND CRED'] },
+  // Rendimento — juros Nubank (NuConta) e poupança Itaú
+  { cat: 'Rendimento',     keywords: ['RENDIMENTO', 'REND.', 'REND ', 'JUROS CREDIT', 'NUCONTA', 'REND CRED', 'JUROS POUP', 'REMUNER BASICA POUP'] },
 
-  // Fatura de cartão de crédito
-  { cat: 'Fatura Crédito', keywords: ['PGTO FAT', 'PAGTO FAT', 'PAGAMENTO FAT', 'FATURA', 'ITAU UNIBANC', 'ITAÚ', 'NUBANK FAT', 'NUBANK CRED'] },
+  // Fatura de cartão de crédito (Nubank e Itaú — vários nomes: Azul, Uniclass, Infinite)
+  { cat: 'Fatura Crédito', keywords: ['PGTO FAT', 'PAGTO FAT', 'PAGAMENTO FAT', 'FATURA', 'ITAU UNIBANC', 'ITAÚ', 'NUBANK FAT', 'NUBANK CRED', 'INT UNICLASS', 'INT AZUL', 'FATURAAZUL', 'FATURAITAU'] },
 
   // Moradia — CAIXA (financiamento), condomínio
   { cat: 'Moradia',        keywords: ['CAIXA ECONOMICA', 'CAIXA ECO', 'CEF ', ' CEF', 'CONDOMINIO', 'CONDOMINIOS', 'SINDICO'] },

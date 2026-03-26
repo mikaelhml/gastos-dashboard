@@ -16,6 +16,10 @@ const RE_TRANSACAO = /^((?:\d{2}\s+[A-Z]{3}(?:\s+\d{4})?)|(?:\d{2}\/\d{2}(?:\/\d
 const RE_PARCELA = /\s+(\d{1,2}\/\d{1,2})\s*$/;
 const RE_DATA_SOZINHA = /^(?:\d{2}\s+[A-Z]{3}(?:\s+\d{4})?|\d{2}\/\d{2}(?:\/\d{4})?)$/i;
 const RE_LINHA_INVALIDA = /^(pagamento recebido|saldo em aberto|total|encargos|juros|multa|iof|limite|resumo|cliente|cpf|vencimento|fechamento|parcelamento de fatura|valor pago|demonstrativo|ol[aá],|nubank)/i;
+// Descs inválidas no novo layout Nubank (a linha começa com data, mas desc é de controle)
+const RE_DESC_INVALIDA = /^(pagamento\s+em|saldo\s+restante)/i;
+// Novo layout Nubank: "•••• 6975 NomeLoja" — prefixo de número de cartão no desc
+const RE_CARD_PREFIX = /^[•·\*]{2,}\s*\d{4}\s+/;
 
 export async function importarNubankFatura(file, onProgress = () => {}) {
   onProgress(5);
@@ -115,7 +119,20 @@ function extrairMesFatura(linhas) {
   for (const linha of linhas) {
     const cleaned = linha.replace(/\s+/g, ' ').trim();
 
-    let match = cleaned.match(/fatura\s+de\s+([a-zçãé]+)(?:\s+de)?\s+(\d{4})/i);
+    // Novo layout: "Data de vencimento: 16 MAR 2026" ou "FATURA 16 MAR 2026"
+    let match = cleaned.match(/vencimento:\s*\d{1,2}\s+([A-Z]{3})\s+(\d{4})/i);
+    if (match) {
+      const mesIdx = MESES_NUBANK[normalizarMes(match[1])];
+      if (mesIdx !== undefined) return `${MESES_ABREV[mesIdx]}/${match[2]}`;
+    }
+
+    match = cleaned.match(/^FATURA\s+\d{1,2}\s+([A-Z]{3})\s+(\d{4})/i);
+    if (match) {
+      const mesIdx = MESES_NUBANK[normalizarMes(match[1])];
+      if (mesIdx !== undefined) return `${MESES_ABREV[mesIdx]}/${match[2]}`;
+    }
+
+    match = cleaned.match(/fatura\s+de\s+([a-zçãé]+)(?:\s+de)?\s+(\d{4})/i);
     if (match) {
       const mes = MESES_LONGOS[normalizarMes(match[1])];
       if (mes) return `${mes}/${match[2]}`;
@@ -181,13 +198,20 @@ function parsearLancamentos(linhas, mesFatura) {
     const match = linha.match(RE_TRANSACAO);
     if (!match) continue;
 
-    const [, rawData, rawDesc, rawValor] = match;
+    const [, rawData, rawDescRaw, rawValor] = match;
     const dataInfo = parseDataFatura(rawData.toUpperCase(), mesFatura);
     const valor = parseBRL(rawValor);
 
     if (!dataInfo || !Number.isFinite(valor) || valor <= 0) continue;
 
-    let desc = rawDesc.trim();
+    // Novo layout Nubank inclui "R$ valor" na linha — strip do sufixo R$
+    let desc = rawDescRaw.trim().replace(/\s*R\$\s*$/, '');
+
+    // Filtrar linhas de controle: "Pagamento em DD MMM", "Saldo restante da fatura anterior"
+    if (RE_DESC_INVALIDA.test(desc)) continue;
+
+    // Novo layout: strip prefixo de número de cartão "•••• 6975 "
+    desc = desc.replace(RE_CARD_PREFIX, '').trim();
     const parcelaInfo = extrairParcelaValida(desc);
     const parcela = parcelaInfo?.parcela || null;
     if (parcelaInfo) {

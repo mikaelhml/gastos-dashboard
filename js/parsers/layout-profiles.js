@@ -49,7 +49,7 @@ export const PDF_LAYOUT_PROFILES = [
     badgeClass: 'badge-purple',
     phaseLabel: 'Fatura cartão',
     importer: importarNubankFatura,
-    matchFileName: () => false,
+    matchFileName: fileName => /^Nubank_\d{4}-\d{2}-\d{2}\.pdf$/i.test(String(fileName ?? '')),
     matchContent: ({ textSample }) =>
       textSample.includes('NUBANK') ||
       textSample.includes('FATURA DE') ||

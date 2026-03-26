@@ -235,6 +235,11 @@ function parsearLancamentosItau(linhasColunadas, grupos, linhasRaw, mesFatura) {
     ...parseInstallmentSection(colunas.right),
   ]);
 
+  console.log(`[itau-fatura][debug] left=${colunas.left.length} rows, right=${colunas.right.length} rows`);
+  console.log(`[itau-fatura][debug] strategy1 (sections): ${rowsCompras.length} transações`);
+  console.log('[itau-fatura][debug] left sample:', colunas.left.slice(0, 5).map(r => r.text));
+  console.log('[itau-fatura][debug] right sample:', colunas.right.slice(0, 5).map(r => r.text));
+
   if (rowsCompras.length === 0) {
     rowsCompras = [
       ...parseTransactionFallback(colunas.left, mesFatura),
@@ -289,6 +294,9 @@ function parseTransactionSections(rows, mesFatura) {
 
     const section = detectarSection(text);
     if (section) {
+      if (section === 'ignore') {
+        console.log(`[itau-fatura][debug] STOP na secao por: "${text.slice(0, 60)}"`);
+      }
       currentSection = section;
       pending = null;
       continue;

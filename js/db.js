@@ -161,4 +161,8 @@ export async function getStoreCounts() {
     count('despesas_fixas'),
     count('lancamentos'),
     count('extrato_transacoes'),
-    count('pdfs_impor
+    count('pdfs_importados'),
+    count('orcamentos'),
+  ]);
+  return { assinaturas, despesas, lancamentos, transacoes, pdfs, orcamentos };
+}

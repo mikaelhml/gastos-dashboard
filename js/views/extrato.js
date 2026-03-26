@@ -213,4 +213,51 @@ function renderExtrato(data) {
   if (data.length === 0) {
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#718096;padding:20px">Nenhuma movimentação importada.</td></tr>';
   } else {
-    data.forEach((t, i)
+    data.forEach((t, i) => {
+      const isEntrada = t.tipo === 'entrada';
+      const color = isEntrada ? '#68d391' : '#fc8181';
+      const sign  = isEntrada ? '+' : '-';
+      tbody.innerHTML += `
+        <tr>
+          <td style="color:#718096">${i + 1}</td>
+          <td>${t.data}</td>
+          <td><span class="badge badge-blue">${t.mes}</span></td>
+          <td>${t.desc}</td>
+          <td><span class="badge ${isEntrada ? 'badge-green' : 'badge-red'}">${t.cat}</span></td>
+          <td style="text-align:right;font-weight:600;color:${color}">${sign} ${fmt(t.valor)}</td>
+        </tr>`;
+    });
+  }
+
+  const totalE = data.filter(t => t.tipo === 'entrada').reduce((s, t) => s + t.valor, 0);
+  const totalS = data.filter(t => t.tipo === 'saida').reduce((s, t) => s + t.valor, 0);
+  document.getElementById('extratoCount').innerHTML =
+    `${data.length} movimentaç${data.length === 1 ? 'ão' : 'ões'} · ` +
+    `<span style="color:#68d391">▲ Entradas: ${fmt(totalE)}</span> &nbsp;·&nbsp; ` +
+    `<span style="color:#fc8181">▼ Saídas: ${fmt(totalS)}</span>`;
+}
+
+/**
+ * Filtra a tabela de extrato. Chamado pelos inputs do HTML.
+ */
+export function filterExtrato() {
+  const q    = document.getElementById('extratoSearch').value.toLowerCase();
+  const mes  = document.getElementById('extratoFilterMes').value;
+  const tipo = document.getElementById('extratoFilterTipo').value;
+  const cat  = document.getElementById('extratoFilterCat').value;
+  const filtered = _transacoes.filter(t =>
+    (!q    || t.desc.toLowerCase().includes(q)) &&
+    (!mes  || t.mes  === mes) &&
+    (!tipo || t.tipo === tipo) &&
+    (!cat  || t.cat  === cat)
+  );
+  renderExtrato(filtered);
+}
+
+export function clearExtratoFilters() {
+  document.getElementById('extratoSearch').value = '';
+  document.getElementById('extratoFilterMes').value = '';
+  document.getElementById('extratoFilterTipo').value = '';
+  document.getElementById('extratoFilterCat').value = '';
+  filterExtrato();
+}

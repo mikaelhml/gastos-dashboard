@@ -166,4 +166,23 @@ window.clearBase          = clearBase;
 window.refreshDashboard   = refreshDashboard;
 
 // Emoji picker helpers — usados pelos onclick inline no HTML
-window.selectEmoji = function
+window.selectEmoji = function(hiddenId, previewId, pickerId, btn, emoji) {
+  const hiddenInput = document.getElementById(hiddenId);
+  if (hiddenInput) hiddenInput.value = emoji;
+  const preview = document.getElementById(previewId);
+  if (preview) preview.textContent = emoji;
+  document.querySelectorAll(`#${pickerId} .emoji-btn`).forEach(b => b.classList.remove('selected'));
+  if (btn) btn.classList.add('selected');
+};
+
+window.syncEmojiPicker = function(pickerId, previewId, emoji) {
+  const preview = document.getElementById(previewId);
+  if (preview) preview.textContent = emoji;
+  document.querySelectorAll(`#${pickerId} .emoji-btn`).forEach(b => {
+    b.classList.toggle('selected', b.dataset.emoji === emoji);
+  });
+};
+
+// ── Executa ───────────────────────────────────────────────────────────────────
+
+init();

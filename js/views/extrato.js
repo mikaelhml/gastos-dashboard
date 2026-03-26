@@ -237,9 +237,6 @@ function renderExtrato(data) {
     `<span style="color:#fc8181">▼ Saídas: ${fmt(totalS)}</span>`;
 }
 
-/**
- * Filtra a tabela de extrato. Chamado pelos inputs do HTML.
- */
 export function filterExtrato() {
   const q    = document.getElementById('extratoSearch').value.toLowerCase();
   const mes  = document.getElementById('extratoFilterMes').value;

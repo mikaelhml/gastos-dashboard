@@ -166,21 +166,30 @@ window.clearBase          = clearBase;
 window.refreshDashboard   = refreshDashboard;
 
 // Emoji picker helpers — usados pelos onclick inline no HTML
-window.selectEmoji = function(hiddenId, previewId, pickerId, btn, emoji) {
-  const hiddenInput = document.getElementById(hiddenId);
-  if (hiddenInput) hiddenInput.value = emoji;
+window.selectEmoji = function selectEmoji(inputId, previewId, pickerId, btn, emoji) {
+  const input = document.getElementById(inputId);
   const preview = document.getElementById(previewId);
+  const picker = document.getElementById(pickerId);
+  if (input)   input.value = emoji;
   if (preview) preview.textContent = emoji;
-  document.querySelectorAll(`#${pickerId} .emoji-btn`).forEach(b => b.classList.remove('selected'));
-  if (btn) btn.classList.add('selected');
+  if (picker)  picker.style.display = 'none';
+  picker?.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('selected'));
+  btn?.classList.add('selected');
 };
 
-window.syncEmojiPicker = function(pickerId, previewId, emoji) {
+window.syncEmojiPicker = function syncEmojiPicker(pickerId, previewId, emoji) {
+  const picker  = document.getElementById(pickerId);
   const preview = document.getElementById(previewId);
-  if (preview) preview.textContent = emoji;
-  document.querySelectorAll(`#${pickerId} .emoji-btn`).forEach(b => {
+  if (preview) preview.textContent = emoji || '✨';
+  picker?.querySelectorAll('.emoji-btn').forEach(b => {
     b.classList.toggle('selected', b.dataset.emoji === emoji);
   });
+};
+
+window.toggleEmojiPicker = function toggleEmojiPicker(pickerId) {
+  const picker = document.getElementById(pickerId);
+  if (!picker) return;
+  picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
 };
 
 // ── Executa ───────────────────────────────────────────────────────────────────

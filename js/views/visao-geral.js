@@ -186,196 +186,168 @@ function buildPrevisaoMes(summaryReal, totals) {
   const mediaEnt   = ultimos3.length
     ? ultimos3.reduce((s, m) => s + m.entradas, 0) / ultimos3.length
     : 0;
+  const totalFixo     = totals.total;
+  const saldoPrevisto = saldoAtual + mediaEnt - totalFixo;
 
-  // Saídas fixas cadastradas (assinaturas + despesas fixas)
-  const saidasFixas = totals.totalAll;
+  const previsaoEl = document.getElementById('previsaoSaldo');
+  const mediaEntEl = document.getElementById('previsaoEntradas');
+  const mediaFixEl = document.getElementById('previsaoFixos');
 
-  // Saldo estimado ao fim do mês
-  const saldoEstimado = saldoAtual + mediaEnt - saidasFixas;
-  const estColor = saldoEstimado > 1000 ? '#68d391' : saldoEstimado > 0 ? '#f6e05e' : '#fc8181';
-
-  const grid = document.getElementById('previsaoGrid');
-  if (!grid) return;
-
-  grid.innerHTML = `
-    <div class="card" style="--accent:#63b3ed">
-      <div class="label">Saldo Atual</div>
-      <div class="value" style="color:#63b3ed;font-size:1.4rem">${fmt(saldoAtual)}</div>
-      <div class="sub">Último saldo importado</div>
-    </div>
-    <div class="card" style="--accent:#68d391">
-      <div class="label">Entradas Esperadas</div>
-      <div class="value" style="color:#68d391;font-size:1.4rem">${fmt(mediaEnt)}</div>
-      <div class="sub">Média dos últimos ${ultimos3.length} meses</div>
-    </div>
-    <div class="card" style="--accent:#fc8181">
-      <div class="label">Saídas Fixas Previstas</div>
-      <div class="value" style="color:#fc8181;font-size:1.4rem">${fmt(saidasFixas)}</div>
-      <div class="sub">Assinaturas + Despesas cadastradas</div>
-    </div>
-    <div class="card" style="--accent:${estColor};border:2px solid ${estColor}">
-      <div class="label">🔮 Saldo Estimado (fim do mês)</div>
-      <div class="value" style="color:${estColor};font-size:1.5rem">${fmt(saldoEstimado)}</div>
-      <div class="sub" style="color:#718096;font-size:0.78rem">Saldo atual + entradas esperadas − fixos</div>
-    </div>`;
+  if (previsaoEl) {
+    previsaoEl.textContent = fmt(saldoPrevisto);
+    previsaoEl.style.color = saldoPrevisto >= 0 ? '#68d391' : '#fc8181';
+  }
+  if (mediaEntEl) mediaEntEl.textContent = fmt(mediaEnt);
+  if (mediaFixEl) mediaFixEl.textContent = fmt(totalFixo);
 }
 
-// ── Cálculos e tabela ─────────────────────────────────────────────────────────
+// ── Cálculos de totais ────────────────────────────────────────────────────────
 
 function calcTotals(assinaturas, despesasFixas) {
-  const totalSubs  = assinaturas.reduce((s, a) => s + a.valor, 0);
-  const totalFixed = despesasFixas.reduce((s, d) => s + d.valor, 0);
-  const totalAll   = totalSubs + totalFixed;
-
-  const parcelados = despesasFixas.filter(d => d.parcelas);
-  const totalSaldo = parcelados.reduce((s, d) => s + (d.parcelas.total - d.parcelas.pagas) * d.valor, 0);
-
-  document.getElementById('totalSubs').textContent         = fmt(totalSubs);
-  document.getElementById('totalFixed').textContent        = fmt(totalFixed);
-  document.getElementById('totalAll').textContent          = fmt(totalAll);
-  document.getElementById('totalAnual').textContent        = fmt(totalAll * 12);
-  document.getElementById('totalSaldoDevedor').textContent = fmt(totalSaldo);
-  document.getElementById('totalSaldoSub').textContent     =
-    `${parcelados.length} parcelamento${parcelados.length !== 1 ? 's' : ''} em aberto`;
-
-  document.getElementById('subTotalBar').textContent   = fmt(totalSubs);
-  document.getElementById('subAnualBar').textContent   = fmt(totalSubs * 12);
-  document.getElementById('fixedTotalBar').textContent = fmt(totalFixed);
-  document.getElementById('fixedAnualBar').textContent = fmt(totalFixed * 12);
-
-  return { totalSubs, totalFixed, totalAll };
+  const totalAssinaturas = assinaturas.reduce((s, a) => s + a.valor, 0);
+  const totalFixas       = despesasFixas.filter(d => d.ativo !== false).reduce((s, d) => s + d.valor, 0);
+  return { totalAssinaturas, totalFixas, total: totalAssinaturas + totalFixas };
 }
 
-function buildResumoTable(totals, assinaturas, despesasFixas) {
-  const tbody = document.getElementById('resumoTable');
-  tbody.innerHTML = '';
-  const rows = [
-    ...despesasFixas.map(d => ({ cat: d.cat,       desc: d.desc, val: d.valor })),
-    ...assinaturas.map(a  => ({ cat: 'Assinatura', desc: a.nome, val: a.valor })),
-  ].sort((a, b) => b.val - a.val);
-
-  if (rows.length === 0 || totals.totalAll <= 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="4" style="text-align:center;color:#718096;padding:20px">
-          Nenhum dado cadastrado ainda.
-        </td>
-      </tr>
-      <tr class="total-row">
-        <td colspan="2"><strong>TOTAL COMPROMETIDO / MÊS</strong></td>
-        <td><strong>${fmt(0)}</strong></td>
-        <td><strong style="color:#718096">0%</strong></td>
-      </tr>`;
-    return;
-  }
-
-  rows.forEach(r => {
-    const pct = (r.val / totals.totalAll * 100).toFixed(1);
-    tbody.innerHTML += `
-      <tr>
-        <td><span class="badge badge-blue">${escapeHtml(r.cat)}</span></td>
-        <td>${escapeHtml(r.desc)}</td>
-        <td><strong>${fmt(r.val)}</strong></td>
-        <td>
-          <div style="display:flex;align-items:center;gap:8px">
-            <div class="progress-wrap" style="flex:1">
-              <div class="progress-bar" style="width:${pct}%;--color:#63b3ed"></div>
-            </div>
-            <span style="font-size:0.8rem;color:#718096;min-width:40px">${pct}%</span>
-          </div>
-        </td>
-      </tr>`;
-  });
-  tbody.innerHTML += `
-    <tr class="total-row">
-      <td colspan="2"><strong>TOTAL COMPROMETIDO / MÊS</strong></td>
-      <td><strong>${fmt(totals.totalAll)}</strong></td>
-      <td><strong style="color:#f6e05e">100%</strong></td>
-    </tr>`;
-}
+// ── Charts estáticos (assinaturas + despesas fixas) ───────────────────────────
 
 function buildCharts(assinaturas, despesasFixas) {
-  if (_chartDespesas) { _chartDespesas.destroy(); _chartDespesas = null; }
   if (_chartSubs)     { _chartSubs.destroy();     _chartSubs     = null; }
+  if (_chartDespesas) { _chartDespesas.destroy(); _chartDespesas = null; }
 
-  _chartDespesas = new Chart(document.getElementById('chartDespesas'), {
-    type: 'doughnut',
-    data: {
-      labels:   despesasFixas.length ? despesasFixas.map(d => d.desc) : ['Sem dados'],
-      datasets: [{ data: despesasFixas.length ? despesasFixas.map(d => d.valor) : [1], backgroundColor: CAT_PALETTE, borderWidth: 0 }],
-    },
-    options: { plugins: { legend: { position: 'bottom', labels: { color: '#a0aec0', font: { size: 11 } } } }, cutout: '65%' },
-  });
+  const ctxSubs = document.getElementById('chartSubs');
+  if (ctxSubs && assinaturas.length > 0) {
+    _chartSubs = new Chart(ctxSubs, {
+      type: 'doughnut',
+      data: {
+        labels:   assinaturas.map(a => a.nome),
+        datasets: [{ data: assinaturas.map(a => a.valor), backgroundColor: CAT_PALETTE, borderWidth: 0 }],
+      },
+      options: {
+        cutout: '60%',
+        plugins: { legend: { position: 'right', labels: { color: '#a0aec0', font: { size: 10 } } } },
+      },
+    });
+  }
 
-  _chartSubs = new Chart(document.getElementById('chartSubs'), {
-    type: 'doughnut',
-    data: {
-      labels:   assinaturas.length ? assinaturas.map(a => a.nome) : ['Sem dados'],
-      datasets: [{ data: assinaturas.length ? assinaturas.map(a => a.valor) : [1], backgroundColor: CAT_PALETTE, borderWidth: 0 }],
-    },
-    options: { plugins: { legend: { position: 'bottom', labels: { color: '#a0aec0', font: { size: 11 } } } }, cutout: '65%' },
-  });
+  const ctxDesp = document.getElementById('chartDespesas');
+  const ativas  = despesasFixas.filter(d => d.ativo !== false);
+  if (ctxDesp && ativas.length > 0) {
+    _chartDespesas = new Chart(ctxDesp, {
+      type: 'doughnut',
+      data: {
+        labels:   ativas.map(d => d.nome),
+        datasets: [{ data: ativas.map(d => d.valor), backgroundColor: CAT_PALETTE, borderWidth: 0 }],
+      },
+      options: {
+        cutout: '60%',
+        plugins: { legend: { position: 'right', labels: { color: '#a0aec0', font: { size: 10 } } } },
+      },
+    });
+  }
 }
+
+// ── Cards mensais do extrato ──────────────────────────────────────────────────
 
 function buildExtratoCards(summaryReal) {
   const container = document.getElementById('extratoCards');
-  container.innerHTML = '';
-  summaryReal.forEach(m => {
-    const diff      = m.saldoFinal - m.saldoInicial;
-    const diffColor = diff >= 0 ? '#68d391' : '#fc8181';
-    const diffSign  = diff >= 0 ? '+' : '';
-    container.innerHTML += `
-      <div class="card" style="--accent:${diffColor}">
-        <div class="label">${escapeHtml(m.mes)}</div>
-        <div class="value" style="font-size:1.2rem">${fmt(m.saldoFinal)}</div>
-        <div class="sub">▲ Entradas: <strong style="color:#68d391">${fmt(m.entradas)}</strong></div>
-        <div class="sub">▼ Saídas: <strong style="color:#fc8181">${fmt(m.saidas)}</strong></div>
-        <div class="sub" style="margin-top:4px">Variação: <strong style="color:${diffColor}">${diffSign}${fmt(diff)}</strong></div>
+  if (!container) return;
+
+  container.innerHTML = summaryReal.map(m => {
+    const saldo = m.saldoFinal ?? 0;
+    const cor   = saldo > 1000 ? '#68d391' : saldo > 0 ? '#f6e05e' : '#fc8181';
+    return `
+      <div class="card" style="min-width:160px;flex:1">
+        <div style="font-size:0.78rem;color:#718096;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">${m.mes}</div>
+        <div style="font-size:0.85rem;color:#68d391">▲ ${fmt(m.entradas)}</div>
+        <div style="font-size:0.85rem;color:#fc8181">▼ ${fmt(m.saidas)}</div>
+        <div style="margin-top:8px;font-size:1.1rem;font-weight:700;color:${cor}">${fmt(saldo)}</div>
       </div>`;
-  });
+  }).join('');
 }
+
+// ── Gráficos de fluxo e saldo ─────────────────────────────────────────────────
 
 function buildFluxoCharts(summaryReal) {
   if (_chartFluxo) { _chartFluxo.destroy(); _chartFluxo = null; }
   if (_chartSaldo) { _chartSaldo.destroy(); _chartSaldo = null; }
 
-  _chartFluxo = new Chart(document.getElementById('chartFluxo'), {
-    type: 'bar',
-    data: {
-      labels:   summaryReal.map(m => m.mes),
-      datasets: [
-        { label: 'Entradas', data: summaryReal.map(m => m.entradas), backgroundColor: '#48bb78', borderRadius: 6 },
-        { label: 'Saídas',   data: summaryReal.map(m => m.saidas),   backgroundColor: '#fc8181', borderRadius: 6 },
-      ],
-    },
-    options: {
-      plugins: { legend: { labels: { color: '#a0aec0' } } },
-      scales: {
-        x: { ticks: { color: '#a0aec0' }, grid: { color: '#2d3748' } },
-        y: { ticks: { color: '#a0aec0', callback: v => 'R$' + (v / 1000).toFixed(0) + 'k' }, grid: { color: '#2d3748' } },
-      },
-    },
-  });
+  const meses    = summaryReal.map(m => m.mes);
+  const entradas = summaryReal.map(m => m.entradas);
+  const saidas   = summaryReal.map(m => m.saidas);
+  const saldos   = summaryReal.map(m => m.saldoFinal ?? 0);
 
-  _chartSaldo = new Chart(document.getElementById('chartSaldo'), {
-    type: 'line',
-    data: {
-      labels:   summaryReal.map(m => m.mes),
-      datasets: [{
-        label: 'Saldo Final',
-        data:  summaryReal.map(m => m.saldoFinal),
-        borderColor: '#63b3ed', backgroundColor: 'rgba(99,179,237,0.15)',
-        tension: 0.4, fill: true, pointRadius: 6, pointBackgroundColor: '#63b3ed',
-      }],
-    },
-    options: {
-      plugins: { legend: { labels: { color: '#a0aec0' } } },
-      scales: {
-        x: { ticks: { color: '#a0aec0' }, grid: { color: '#2d3748' } },
-        y: { ticks: { color: '#a0aec0', callback: v => 'R$' + (v / 1000).toFixed(1) + 'k' }, grid: { color: '#2d3748' } },
+  const ctxFluxo = document.getElementById('chartFluxo');
+  if (ctxFluxo) {
+    _chartFluxo = new Chart(ctxFluxo, {
+      type: 'bar',
+      data: {
+        labels: meses,
+        datasets: [
+          { label: 'Entradas', data: entradas, backgroundColor: '#68d39188', borderRadius: 4 },
+          { label: 'Saídas',   data: saidas,   backgroundColor: '#fc818188', borderRadius: 4 },
+        ],
       },
-    },
-  });
+      options: {
+        plugins: { legend: { labels: { color: '#a0aec0', font: { size: 10 } } } },
+        scales: {
+          x: { ticks: { color: '#a0aec0' }, grid: { color: '#2d3748' } },
+          y: { ticks: { color: '#a0aec0', callback: v => 'R$' + (v / 1000).toFixed(1) + 'k' }, grid: { color: '#2d3748' } },
+        },
+      },
+    });
+  }
+
+  const ctxSaldo = document.getElementById('chartSaldo');
+  if (ctxSaldo) {
+    _chartSaldo = new Chart(ctxSaldo, {
+      type: 'line',
+      data: {
+        labels: meses,
+        datasets: [{
+          label: 'Saldo Final',
+          data: saldos,
+          borderColor: '#63b3ed',
+          backgroundColor: '#63b3ed22',
+          tension: 0.3,
+          fill: true,
+          pointRadius: 5,
+          pointBackgroundColor: '#63b3ed',
+        }],
+      },
+      options: {
+        plugins: { legend: { labels: { color: '#a0aec0', font: { size: 10 } } } },
+        scales: {
+          x: { ticks: { color: '#a0aec0' }, grid: { color: '#2d3748' } },
+          y: { ticks: { color: '#a0aec0', callback: v => 'R$' + (v / 1000).toFixed(1) + 'k' }, grid: { color: '#2d3748' } },
+        },
+      },
+    });
+  }
 }
 
+// ── Tabela resumo geral ───────────────────────────────────────────────────────
 
+function buildResumoTable(totals, assinaturas, despesasFixas) {
+  const tbody = document.getElementById('resumoTableBody');
+  if (!tbody) return;
+
+  const ativas = despesasFixas.filter(d => d.ativo !== false);
+  const rows   = [
+    ...assinaturas.map(a => ({ icon: a.icon || '🔁', nome: a.nome, tipo: 'Assinatura', valor: a.valor })),
+    ...ativas.map(d      => ({ icon: d.icon || '📋', nome: d.nome, tipo: 'Fixa',       valor: d.valor })),
+  ].sort((a, b) => b.valor - a.valor);
+
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${escapeHtml(r.icon)} ${escapeHtml(r.nome)}</td>
+      <td><span class="badge badge-blue" style="font-size:0.7rem">${r.tipo}</span></td>
+      <td style="text-align:right;color:#fc8181">${fmt(r.valor)}</td>
+      <td style="text-align:right;color:#a0aec0">${fmt(r.valor * 12)}</td>
+    </tr>`).join('');
+
+  const totalEl = document.getElementById('resumoTotalMes');
+  const anualEl = document.getElementById('resumoTotalAno');
+  if (totalEl) totalEl.textContent = fmt(totals.total);
+  if (anualEl) anualEl.textContent  = fmt(totals.total * 12);
+}

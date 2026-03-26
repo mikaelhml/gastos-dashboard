@@ -113,7 +113,7 @@ function bindAssinaturaForm() {
   const form = document.getElementById('assinaturaForm');
   if (!form) return;
 
-  form.onsubmit = async event => {
+  form.addEventListener('submit', async event => {
     event.preventDefault();
 
     const iconInput  = document.getElementById('assinaturaIcon');
@@ -137,9 +137,30 @@ function bindAssinaturaForm() {
     iconInput.value = '✨';
     window.syncEmojiPicker?.('assinaturaIconPicker', 'assinaturaIconPreview', '✨');
     setFeedback('assinaturaFormFeedback', 'Assinatura adicionada!', 'success');
-    await buildAssinaturas();
     window.refreshDashboard?.();
   });
+}
+
+function bindRemoveButtons() {
+  document.querySelectorAll('[data-assinatura-id]').forEach(button => {
+    button.onclick = async () => {
+      const rawId = button.getAttribute('data-assinatura-id');
+      if (!rawId) return;
+      const id = parseStoreKey(rawId);
+      const nome = button.closest('.sub-card')?.querySelector('.sub-name')?.textContent?.trim() || 'esta assinatura';
+      const ok = confirm(`Remover ${nome}?`);
+      if (!ok) return;
+      await deleteItem('assinaturas', id);
+      setFeedback('assinaturaFormFeedback', 'Assinatura removida com sucesso.', 'success');
+      window.refreshDashboard?.();
+    };
+  });
+}
+
+function parseStoreKey(value) {
+  if (value === null || value === undefined || value === '') return value;
+  const numeric = Number(value);
+  return Number.isNaN(numeric) ? value : numeric;
 }
 
 function setFeedback(elementId, message, type) {

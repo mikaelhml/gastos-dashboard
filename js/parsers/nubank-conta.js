@@ -118,6 +118,7 @@ function parsearTransacoes(linhas) {
       tipo:  tipoAtual,
       desc,
       valor,
+      banco: 'nubank',
     });
   }
 
@@ -294,10 +295,10 @@ export async function importarNubankConta(file, onProgress = () => {}) {
     ? [periodo.mesPrincipal]
     : [...new Set(transacoes.map(t => t.mes))];
 
-  // 9. Remover transações existentes do mesmo período (substituir seed)
+  // 9. Remover transações existentes do mesmo período e da mesma conta (não apagar outras contas)
   const todas = await getAll('extrato_transacoes');
   for (const t of todas) {
-    if (mesesNoPDF.includes(t.mes)) await deleteItem('extrato_transacoes', t.id);
+    if (mesesNoPDF.includes(t.mes) && t.banco === 'nubank') await deleteItem('extrato_transacoes', t.id);
   }
 
   // 10. Inserir novas transações

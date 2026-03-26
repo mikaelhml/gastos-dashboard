@@ -92,6 +92,7 @@ function parsearLinhas(linhas) {
       tipo,
       desc: desc.trim(),
       valor,
+      banco: 'itau',
     });
   }
 
@@ -232,10 +233,10 @@ export async function importarItauConta(file, onProgress = () => {}) {
   // 7. Determinar meses cobertos
   const mesesNoPDF = [...new Set(transacoes.map(t => t.mes))];
 
-  // 8. Remover transações existentes dos mesmos meses (substituição limpa)
+  // 8. Remover transações existentes dos mesmos meses e da mesma conta (não apagar outras contas)
   const todas = await getAll('extrato_transacoes');
   for (const t of todas) {
-    if (mesesNoPDF.includes(t.mes)) await deleteItem('extrato_transacoes', t.id);
+    if (mesesNoPDF.includes(t.mes) && t.banco === 'itau') await deleteItem('extrato_transacoes', t.id);
   }
 
   // 9. Inserir novas transações

@@ -217,11 +217,14 @@ function renderExtrato(data) {
       const isEntrada = t.tipo === 'entrada';
       const color = isEntrada ? '#68d391' : '#fc8181';
       const sign  = isEntrada ? '+' : '-';
+      const bancoLabel = t.banco === 'nubank' ? 'Nubank' : t.banco === 'itau' ? 'Itaú' : null;
+      const bancoClass = t.banco === 'nubank' ? 'badge-purple' : 'badge-yellow';
+      const bancoBadge = bancoLabel ? `<span class="badge ${bancoClass}" style="font-size:0.7rem">${bancoLabel}</span>` : '';
       tbody.innerHTML += `
         <tr>
           <td style="color:#718096">${i + 1}</td>
           <td>${t.data}</td>
-          <td><span class="badge badge-blue">${t.mes}</span></td>
+          <td><span class="badge badge-blue">${t.mes}</span> ${bancoBadge}</td>
           <td>${t.desc}</td>
           <td><span class="badge ${isEntrada ? 'badge-green' : 'badge-red'}">${t.cat}</span></td>
           <td style="text-align:right;font-weight:600;color:${color}">${sign} ${fmt(t.valor)}</td>

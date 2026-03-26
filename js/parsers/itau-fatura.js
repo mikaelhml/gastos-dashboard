@@ -11,6 +11,25 @@ const SECTION_PATTERNS = {
   services: ['LANCAMENTOS PRODUTOS SERVICOS', 'LANCAMENTOS PRODUTOS E SERVICOS'],
   installments: ['COMPRAS PARCELADAS', 'PROXIMAS FATURAS', 'PROXIMA FATURA'],
   payments: ['PAGAMENTO EFETUADO', 'PAGAMENTOS EFETUADOS', 'TOTAL DOS PAGAMENTOS', 'PAGAMENTO VIA CONTA'],
+  // Padrões que encerram definitivamente a seção de lançamentos
+  stop: [
+    'RESUMO DA FATURA',
+    'TOTAL DA FATURA',
+    'SALDO FINANCIADO',
+    'ENCARGOS',
+    'JUROS',
+    'IOF',
+    'LIMITE',
+    'PAGAMENTO MINIMO',
+    'PARCELAS FIXAS',
+    'ESTAMOS LHE ENVIANDO',
+    'OUTRA VIA',
+    'CASO VOC',
+    'PAGAMENTO OBRIGATORIO',
+    'CONSULTE OUTRAS OPCOES',
+    'ANUIDADE DIFERENCIADA',
+  ],
+  // Padrões que devem ser ignorados (linha pulada), mas NÃO mudam a seção atual
   ignore: [
     'RESUMO DA FATURA',
     'TOTAL DA FATURA',
@@ -33,6 +52,9 @@ const SECTION_PATTERNS = {
     'PAGAMENTO OBRIGATORIO',
     'CONSULTE OUTRAS OPCOES',
     'ANUIDADE DIFERENCIADA',
+    'LANCAMENTOS NACIONAIS',
+    'LANCAMENTOS INTERNACIONAIS',
+    'TOTAL DOS LANCAMENTOS',
   ],
 };
 
@@ -334,7 +356,9 @@ function detectarSection(text) {
   if (matchesAny(text, SECTION_PATTERNS.services)) return 'services';
   if (matchesAny(text, SECTION_PATTERNS.installments)) return 'installments';
   if (matchesAny(text, SECTION_PATTERNS.payments)) return 'payments';
-  if (matchesAny(text, SECTION_PATTERNS.ignore)) return 'ignore';
+  // Usa 'stop' (não 'ignore') — 'ignore' tem keywords curtas como CARTAO/TITULAR
+  // que causam falsos positivos em sub-cabeçalhos de múltiplos cartões
+  if (matchesAny(text, SECTION_PATTERNS.stop)) return 'ignore';
   return null;
 }
 

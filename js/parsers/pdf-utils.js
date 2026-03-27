@@ -97,36 +97,54 @@ async function abrirPDF(buffer) {
   return pdf;
 }
 
-async function extrairGruposDoPdf(pdf, tol = 8) {
-  const gruposPaginas = [];
+async function extrairItensPaginasDoPdf(pdf) {
+  const paginas = [];
 
   for (let pg = 1; pg <= pdf.numPages; pg++) {
     const page = await pdf.getPage(pg);
     const content = await page.getTextContent();
-    const grupos = [];
+    const items = content.items
+      .filter(item => item.str && item.str.trim())
+      .map(item => ({
+        x: item.transform[4],
+        y: item.transform[5],
+        str: item.str,
+        page: pg,
+      }));
 
-    for (const item of content.items) {
-      if (!item.str || !item.str.trim()) continue;
-
-      const y = item.transform[5];
-      const x = item.transform[4];
-      const grupo = grupos.find(g => Math.abs(g.y - y) < tol);
-
-      if (grupo) {
-        grupo.itens.push({ x, str: item.str });
-      } else {
-        grupos.push({ y, itens: [{ x, str: item.str }] });
-      }
-    }
-
-    grupos.sort((a, b) => b.y - a.y);
-    gruposPaginas.push(...grupos.map(grupo => {
-      grupo.itens.sort((a, b) => a.x - b.x);
-      return grupo.itens.map(item => ({ ...item, y: grupo.y, page: pg }));
-    }));
+    paginas.push({ page: pg, items });
   }
 
-  return gruposPaginas;
+  return paginas;
+}
+
+function agruparItensPorY(itens, tol = 8) {
+  const grupos = [];
+
+  for (const item of itens) {
+    const grupo = grupos.find(g => Math.abs(g.y - item.y) < tol);
+
+    if (grupo) {
+      grupo.itens.push(item);
+    } else {
+      grupos.push({ y: item.y, itens: [item] });
+    }
+  }
+
+  grupos.sort((a, b) => b.y - a.y);
+  return grupos.map(grupo => {
+    grupo.itens.sort((a, b) => a.x - b.x);
+    return grupo.itens.map(item => ({ ...item, y: grupo.y }));
+  });
+}
+
+function extrairGruposDasPaginas(paginas, tol = 8) {
+  return paginas.flatMap(pagina => agruparItensPorY(pagina.items, tol));
+}
+
+async function extrairGruposDoPdf(pdf, tol = 8) {
+  const paginas = await extrairItensPaginasDoPdf(pdf);
+  return extrairGruposDasPaginas(paginas, tol);
 }
 
 export async function extrairGruposPDF(buffer, tol = 8) {
@@ -141,9 +159,10 @@ export async function extrairLinhasPDF(buffer, tol = 8) {
 
 export async function extrairEstruturaPDF(buffer, tolGrupos = 8, tolLinhas = tolGrupos) {
   const pdf = await abrirPDF(buffer);
-  const grupos = await extrairGruposDoPdf(pdf, tolGrupos);
+  const paginas = await extrairItensPaginasDoPdf(pdf);
+  const grupos = extrairGruposDasPaginas(paginas, tolGrupos);
   const linhas = grupos.map(grupo => grupo.map(i => i.str).join(' ').trim());
-  return { grupos, linhas, tolLinhas };
+  return { paginas, grupos, linhas, tolLinhas };
 }
 
 export function parseBRL(str) {

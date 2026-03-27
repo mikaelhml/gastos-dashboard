@@ -2,34 +2,20 @@ import { addItem, getAll, bulkAdd, deleteItem } from '../db.js';
 import { categorizar } from '../utils/categorizer.js';
 import { computeHash, extrairEstruturaPDF, parseBRL, MESES_ABREV } from './pdf-utils.js';
 
+// Aceita prefixo de ícone (contactless, débito, etc.) antes da data
 const RE_DATA_SLASH = /^\d{2}\/\d{2}(?:\/\d{4})?$/;
-const RE_VALOR_ITEM = /^[\d.]{1,10},\d{2}$/;
-const RE_TRANSACAO = /^(\d{2}\/\d{2}(?:\/\d{4})?)\s+(.+?)\s+([\d.]{1,10},\d{2})$/;
+const RE_DATA_PREFIX = /^[^\d]*\d{2}\/\d{2}(?:\/\d{4})?(?:\s|$)/;
+const RE_VALOR_ITEM = /^-?[\d.]{1,10},\d{2}$/;
+const RE_TRANSACAO = /^[^\d]*(\d{2}\/\d{2}(?:\/\d{4})?)\s+(.+?)\s+(-?[\d.]{1,10},\d{2})$/;
 
 const SECTION_PATTERNS = {
   purchases: ['LANCAMENTOS COMPRAS E SAQUES'],
   services: ['LANCAMENTOS PRODUTOS SERVICOS', 'LANCAMENTOS PRODUTOS E SERVICOS'],
+  // installments encerra a seção de compras (esses lançamentos são de faturas futuras)
   installments: ['COMPRAS PARCELADAS', 'PROXIMAS FATURAS', 'PROXIMA FATURA'],
   payments: ['PAGAMENTO EFETUADO', 'PAGAMENTOS EFETUADOS', 'TOTAL DOS PAGAMENTOS', 'PAGAMENTO VIA CONTA'],
-  // Padrões que encerram definitivamente a seção de lançamentos
-  stop: [
-    'RESUMO DA FATURA',
-    'TOTAL DA FATURA',
-    'SALDO FINANCIADO',
-    'ENCARGOS',
-    'JUROS',
-    'IOF',
-    'LIMITE',
-    'PAGAMENTO MINIMO',
-    'PARCELAS FIXAS',
-    'ESTAMOS LHE ENVIANDO',
-    'OUTRA VIA',
-    'CASO VOC',
-    'PAGAMENTO OBRIGATORIO',
-    'CONSULTE OUTRAS OPCOES',
-    'ANUIDADE DIFERENCIADA',
-  ],
-  // Padrões que devem ser ignorados (linha pulada), mas NÃO mudam a seção atual
+  // Linhas puladas sem mudar a seção — nunca usar como STOP global
+  // (linhas de encargos/juros/limite podem aparecer na coluna oposta às compras)
   ignore: [
     'RESUMO DA FATURA',
     'TOTAL DA FATURA',
@@ -55,6 +41,9 @@ const SECTION_PATTERNS = {
     'LANCAMENTOS NACIONAIS',
     'LANCAMENTOS INTERNACIONAIS',
     'TOTAL DOS LANCAMENTOS',
+    'FIQUE ATENTO',
+    'SIMULACAO',
+    'LIMITES DE CREDITO',
   ],
 };
 
@@ -82,8 +71,8 @@ export async function importarItauFatura(file, onProgress = () => {}) {
   }
 
   onProgress(30);
-  const { grupos, linhas: linhasRaw } = await extrairEstruturaPDF(buffer, 3);
-  const linhasColunadas = montarLinhasColunadas(grupos);
+  const { paginas, grupos, linhas: linhasRaw } = await extrairEstruturaPDF(buffer, 3);
+  const linhasColunadas = montarLinhasColunadas(paginas);
   const linhas = linhasColunadas.flatMap(linha => [linha.left, linha.right].filter(Boolean));
   onProgress(50);
 
@@ -98,7 +87,7 @@ export async function importarItauFatura(file, onProgress = () => {}) {
   }
 
   const mesFatura = extrairMesFaturaItau(linhas);
-  const lancamentos = parsearLancamentosItau(linhasColunadas, grupos, linhasRaw, mesFatura);
+  const lancamentos = parsearLancamentosItau(linhasColunadas, grupos, linhasRaw, paginas, mesFatura);
   console.log(`[itau-fatura] "${file.name}": ${lancamentos.length} lançamentos, fatura=${mesFatura || 'não identificada'}`);
 
   if (lancamentos.length === 0) {
@@ -159,24 +148,181 @@ export async function importarItauFatura(file, onProgress = () => {}) {
   return { importado: lancamentos.length, duplicata: false, mes: mesFatura };
 }
 
-function montarLinhasColunadas(grupos) {
-  const maxX = grupos.reduce((acc, grupo) => {
-    const maiorGrupo = grupo.reduce((inner, item) => Math.max(inner, item.x || 0), 0);
-    return Math.max(acc, maiorGrupo);
-  }, 0);
-  const columnSplit = maxX > 0 ? maxX * 0.52 : 280;
+function montarLinhasColunadas(paginas) {
+  const linhas = [];
 
-  return grupos.map(grupo => {
-    const leftItems = grupo.filter(item => (item.x || 0) < columnSplit);
-    const rightItems = grupo.filter(item => (item.x || 0) >= columnSplit);
+  for (const pagina of paginas) {
+    const estrutura = montarEstruturaPaginaColunas(pagina);
 
-    return {
-      page: grupo[0]?.page ?? 1,
-      y: grupo[0]?.y ?? 0,
-      left: joinItems(leftItems),
-      right: joinItems(rightItems),
-    };
+    for (const row of estrutura.fullWidthRows) {
+      linhas.push({
+        page: pagina.page,
+        y: row.y,
+        left: row.raw,
+        right: '',
+      });
+    }
+
+    for (const row of estrutura.leftRows) {
+      linhas.push({
+        page: pagina.page,
+        y: row.y,
+        left: row.raw,
+        right: '',
+      });
+    }
+
+    for (const row of estrutura.rightRows) {
+      linhas.push({
+        page: pagina.page,
+        y: row.y,
+        left: '',
+        right: row.raw,
+      });
+    }
+  }
+
+  return linhas.sort((a, b) => {
+    if (a.page !== b.page) return a.page - b.page;
+    if (a.y !== b.y) return b.y - a.y;
+    return Number(Boolean(b.left)) - Number(Boolean(a.left));
   });
+}
+
+function montarEstruturaPaginaColunas(pagina) {
+  const items = pagina.items ?? [];
+  if (!items.length) {
+    return { columnSplit: 280, fullWidthRows: [], leftRows: [], rightRows: [] };
+  }
+
+  const columnSplit = detectarColumnSplit(items);
+  const leftItems = items.filter(item => (item.x || 0) < columnSplit);
+  const rightItems = items.filter(item => (item.x || 0) >= columnSplit);
+
+  return {
+    columnSplit,
+    fullWidthRows: agruparItensPorY(items, 3)
+      .map(row => criarRowEstruturada(pagina.page, row))
+      .filter(row => isStructuralFullWidthRow(row.raw, row.itens, columnSplit)),
+    leftRows: agruparItensPorY(leftItems, 3)
+      .map(row => criarRowEstruturada(pagina.page, row))
+      .filter(row => row.raw),
+    rightRows: agruparItensPorY(rightItems, 3)
+      .map(row => criarRowEstruturada(pagina.page, row))
+      .filter(row => row.raw),
+  };
+}
+
+function criarRowEstruturada(page, row) {
+  const raw = joinItems(row.itens);
+  return {
+    page,
+    y: row.y,
+    itens: row.itens,
+    raw,
+    text: limparRuidoEstruturalLinha(raw),
+  };
+}
+
+function detectarColumnSplit(items) {
+  const xs = items
+    .map(item => Number(item.x) || 0)
+    .filter(x => Number.isFinite(x) && x > 0)
+    .sort((a, b) => a - b);
+
+  if (xs.length < 10) return 280;
+
+  const minX = xs[0];
+  const maxX = xs[xs.length - 1];
+  if (maxX <= minX) return 280;
+
+  const span = maxX - minX;
+  const faixaCentralMin = minX + span * 0.28;
+  const faixaCentralMax = minX + span * 0.72;
+  const centralXs = xs.filter(x => x >= faixaCentralMin && x <= faixaCentralMax);
+  const base = centralXs.length >= 2 ? centralXs : xs;
+  const xSupport = new Map();
+  for (const x of base) {
+    const key = Number(x.toFixed(1));
+    xSupport.set(key, (xSupport.get(key) ?? 0) + 1);
+  }
+  const candidatosComSuporte = [...xSupport.entries()]
+    .filter(([, count]) => count >= 2)
+    .map(([x]) => x)
+    .sort((a, b) => a - b);
+  const candidatos = candidatosComSuporte.length >= 2 ? candidatosComSuporte : base;
+  const baseline = minX + span * 0.52;
+  const supportEntries = [...xSupport.entries()].filter(([, count]) => count >= 2);
+  const maxSupport = supportEntries.reduce((acc, [, count]) => Math.max(acc, count), 0);
+  const supportThreshold = Math.max(3, Math.ceil(maxSupport * 0.12));
+  const significantEntries = supportEntries
+    .filter(([, count]) => count >= supportThreshold)
+    .sort((a, b) => a[0] - b[0]);
+  const leftPeak = significantEntries.filter(([x]) => x < baseline).at(-1);
+  const rightPeak = significantEntries.find(([x]) => x >= baseline);
+
+  let melhorGap = 0;
+  let split = baseline;
+
+  if (leftPeak && rightPeak && rightPeak[0] - leftPeak[0] >= 20) {
+    return leftPeak[0] + (rightPeak[0] - leftPeak[0]) / 2;
+  }
+
+  for (let i = 1; i < candidatos.length; i++) {
+    const anterior = candidatos[i - 1];
+    const atual = candidatos[i];
+    const gap = atual - anterior;
+    if (gap > melhorGap) {
+      melhorGap = gap;
+      split = anterior + gap / 2;
+    }
+  }
+
+  return split;
+}
+
+function agruparItensPorY(items, tol = 3) {
+  const grupos = [];
+
+  for (const item of items) {
+    const grupo = grupos.find(current => Math.abs(current.y - item.y) < tol);
+    if (grupo) {
+      grupo.itens.push(item);
+    } else {
+      grupos.push({ y: item.y, itens: [item] });
+    }
+  }
+
+  grupos.sort((a, b) => b.y - a.y);
+  return grupos.map(grupo => ({
+    y: grupo.y,
+    itens: grupo.itens.slice().sort((a, b) => (a.x || 0) - (b.x || 0)),
+  }));
+}
+
+function isStructuralFullWidthRow(text, items, columnSplit) {
+  const normalized = normalizeForMatch(text);
+  const hasLeft = items.some(item => (item.x || 0) < columnSplit);
+  const hasRight = items.some(item => (item.x || 0) >= columnSplit);
+  const hasTransactionDate = startsWithTransactionDate(text);
+  const amountCount = items.filter(item => RE_VALOR_ITEM.test(normalizeLine(item.str))).length;
+  const hasCardHolderHeader = /\bFINAL\s+\d{4}\b/.test(normalized) && amountCount === 0 && !hasTransactionDate;
+
+  if (!hasLeft || !hasRight) return false;
+  if (hasTransactionDate) return false;
+  if (amountCount > 0 && !matchesAny(text, SECTION_PATTERNS.payments)) return false;
+
+  return (
+    matchesAny(text, SECTION_PATTERNS.purchases) ||
+    matchesAny(text, SECTION_PATTERNS.services) ||
+    matchesAny(text, SECTION_PATTERNS.installments) ||
+    matchesAny(text, SECTION_PATTERNS.payments) ||
+    hasCardHolderHeader ||
+    normalized.includes('VENCIMENTO') ||
+    normalized.includes('EMISSAO') ||
+    normalized.includes('POSTAGEM') ||
+    normalized.includes('TITULAR')
+  );
 }
 
 function joinItems(items) {
@@ -224,21 +370,29 @@ function extrairMesFaturaItau(linhas) {
   return null;
 }
 
-function parsearLancamentosItau(linhasColunadas, grupos, linhasRaw, mesFatura) {
+function parsearLancamentosItau(linhasColunadas, grupos, linhasRaw, paginas, mesFatura) {
   const colunas = separarPorColuna(linhasColunadas);
-  let rowsCompras = [
-    ...parseTransactionSections(colunas.left, mesFatura),
-    ...parseTransactionSections(colunas.right, mesFatura),
-  ];
+  const directRows = parseTransactionColumnDirect(paginas, mesFatura);
+
+  // Intercala left+right ordenados por page+Y para que cabeçalhos de seção
+  // (geralmente capturados na coluna esquerda, pois são full-width) também
+  // ativem a seção para as transações da coluna direita
+  const mergedRows = [
+    ...colunas.left.map(r => ({ ...r, _col: 0 })),
+    ...colunas.right.map(r => ({ ...r, _col: 1 })),
+  // IMPORTANTE: sort descendente por Y porque no PDF y=0 é o fundo da página (y grande = topo).
+  // Ordem correta: page ASC, então y DESC (topo→fundo), col ASC para tiebreak.
+  ].sort((a, b) => a.page !== b.page ? a.page - b.page : a.y !== b.y ? b.y - a.y : a._col - b._col);
+
+  let rowsCompras = parseTransactionSections(mergedRows, mesFatura);
+  if (directRows.length > rowsCompras.length) {
+    rowsCompras = directRows;
+  }
+
   const parcelasMap = new Map([
     ...parseInstallmentSection(colunas.left),
     ...parseInstallmentSection(colunas.right),
   ]);
-
-  console.log(`[itau-fatura][debug] left=${colunas.left.length} rows, right=${colunas.right.length} rows`);
-  console.log(`[itau-fatura][debug] strategy1 (sections): ${rowsCompras.length} transações`);
-  console.log('[itau-fatura][debug] left sample:', colunas.left.slice(0, 5).map(r => r.text));
-  console.log('[itau-fatura][debug] right sample:', colunas.right.slice(0, 5).map(r => r.text));
 
   if (rowsCompras.length === 0) {
     rowsCompras = [
@@ -267,6 +421,57 @@ function parsearLancamentosItau(linhasColunadas, grupos, linhasRaw, mesFatura) {
   });
 }
 
+function parseTransactionColumnDirect(paginas, mesFatura) {
+  const lancamentos = [];
+
+  for (const pagina of paginas) {
+    const estrutura = montarEstruturaPaginaColunas(pagina);
+    const mergedRows = [
+      ...estrutura.fullWidthRows.map(row => ({ ...row, _col: -1 })),
+      ...estrutura.leftRows.map(row => ({ ...row, _col: 0 })),
+      ...estrutura.rightRows.map(row => ({ ...row, _col: 1 })),
+    ].sort((a, b) => {
+      if (a.page !== b.page) return a.page - b.page;
+      if (a.y !== b.y) return b.y - a.y;
+      return a._col - b._col;
+    });
+
+    const active = [false, false];
+
+    for (const row of mergedRows) {
+      const raw = row.raw;
+      const text = row.text;
+      const section = detectarSection(raw);
+
+      if (row._col === -1) {
+        if (section && isTransactionSection(section)) {
+          active[0] = true;
+          active[1] = true;
+        } else if (section && !isTransactionSection(section)) {
+          active[0] = false;
+          active[1] = false;
+        }
+        continue;
+      }
+
+      const col = row._col;
+      if (section) {
+        active[col] = isTransactionSection(section);
+        continue;
+      }
+
+      if (!active[col] || !text || isIgnorableRow(text)) continue;
+
+      const parsed = parseTransactionLine(text, mesFatura);
+      if (parsed) {
+        lancamentos.push(parsed);
+      }
+    }
+  }
+
+  return dedupeLancamentos(lancamentos);
+}
+
 function separarPorColuna(linhasColunadas) {
   const left = [];
   const right = [];
@@ -285,39 +490,63 @@ function separarPorColuna(linhasColunadas) {
 
 function parseTransactionSections(rows, mesFatura) {
   const lancamentos = [];
-  let currentSection = null;
-  let pending = null;
+  // Seção independente por coluna: left (_col=0) e right (_col=1)
+  // Isso evita que "Compras parceladas" da coluna direita mate transações da esquerda,
+  // e que "Encargos/Juros" da coluna oposta (faturas 1 cartão) encerre a seção ativa
+  const sections = [null, null];
+  const pendings = [null, null];
+  // Seções não-transacionais (installments/payments) só encerram a seção de compras
+  // DEPOIS que pelo menos 1 transação foi encontrada. Isso evita que nav links da
+  // página 1 (capa) que têm o mesmo texto das seções reais matem a seção prematuramente.
+  let foundAnyTransaction = false;
 
   for (const row of rows) {
-    const text = normalizeLine(row.text);
-    if (!text) continue;
+    const rawText = normalizeLine(row.text);
+    if (!rawText) continue;
+    const text = limparRuidoEstruturalLinha(rawText);
 
-    const section = detectarSection(text);
+    const col = row._col ?? 0;
+    const section = detectarSection(rawText);
     if (section) {
-      if (section === 'ignore') {
-        console.log(`[itau-fatura][debug] STOP na secao por: "${text.slice(0, 60)}"`);
+      // Se ainda não achamos nenhuma transação, ignorar seções não-transacionais
+      // (installments/payments) para não matar a seção ativa por causa de nav links
+      if (!isTransactionSection(section) && !foundAnyTransaction) {
+        pendings[col] = null;
+        continue;
       }
-      currentSection = section;
-      pending = null;
+      sections[col] = section;
+      // Se a outra coluna ainda não tem seção ativa, propaga (cabeçalho full-width
+      // capturado na col esquerda também abre a col direita)
+      const other = 1 - col;
+      if (sections[other] === null && isTransactionSection(section)) {
+        sections[other] = section;
+      }
+      pendings[col] = null;
       continue;
     }
 
-    if (!isTransactionSection(currentSection) || isIgnorableRow(text)) {
-      pending = null;
+    if (!isTransactionSection(sections[col])) {
+      pendings[col] = null;
       continue;
     }
 
-    if (RE_DATA_SLASH.test(text)) {
-      pending = text;
+    if (!text || isIgnorableRow(text)) {
+      pendings[col] = null;
       continue;
     }
 
-    if (pending) {
-      pending = `${pending} ${text}`.trim();
-      const parsed = parseTransactionLine(pending, mesFatura);
+    if (startsWithTransactionDate(text)) {
+      pendings[col] = text;
+      continue;
+    }
+
+    if (pendings[col]) {
+      pendings[col] = `${pendings[col]} ${text}`.trim();
+      const parsed = parseTransactionLine(pendings[col], mesFatura);
       if (parsed) {
         lancamentos.push(parsed);
-        pending = null;
+        foundAnyTransaction = true;
+        pendings[col] = null;
       }
       continue;
     }
@@ -325,6 +554,7 @@ function parseTransactionSections(rows, mesFatura) {
     const parsed = parseTransactionLine(text, mesFatura);
     if (parsed) {
       lancamentos.push(parsed);
+      foundAnyTransaction = true;
     }
   }
 
@@ -336,16 +566,17 @@ function parseInstallmentSection(rows) {
   let currentSection = null;
 
   for (const row of rows) {
-    const text = normalizeLine(row.text);
-    if (!text) continue;
+    const rawText = normalizeLine(row.text);
+    if (!rawText) continue;
+    const text = limparRuidoEstruturalLinha(rawText);
 
-    const section = detectarSection(text);
+    const section = detectarSection(rawText);
     if (section) {
       currentSection = section;
       continue;
     }
 
-    if (currentSection !== 'installments' || isIgnorableRow(text)) continue;
+    if (currentSection !== 'installments' || !text || isIgnorableRow(text)) continue;
 
     const parsed = parseInstallmentLine(text);
     if (!parsed) continue;
@@ -364,9 +595,6 @@ function detectarSection(text) {
   if (matchesAny(text, SECTION_PATTERNS.services)) return 'services';
   if (matchesAny(text, SECTION_PATTERNS.installments)) return 'installments';
   if (matchesAny(text, SECTION_PATTERNS.payments)) return 'payments';
-  // Usa 'stop' (não 'ignore') — 'ignore' tem keywords curtas como CARTAO/TITULAR
-  // que causam falsos positivos em sub-cabeçalhos de múltiplos cartões
-  if (matchesAny(text, SECTION_PATTERNS.stop)) return 'ignore';
   return null;
 }
 
@@ -376,9 +604,13 @@ function isTransactionSection(section) {
 
 function isIgnorableRow(text) {
   const normalized = normalizeForMatch(text);
+  const hasTransactionDate = startsWithTransactionDate(text);
   return (
     matchesAny(text, SECTION_PATTERNS.ignore) ||
     matchesAny(text, SECTION_PATTERNS.payments) ||
+    (!hasTransactionDate && normalized.includes('LANCAMENTOS NO CARTAO')) ||
+    (!hasTransactionDate && normalized.includes('TOTAL DOS LANCAMENTOS ATUAIS')) ||
+    (!hasTransactionDate && /\bFINAL\s+\d{4}\b/.test(normalized)) ||
     normalized.startsWith('DATA ') ||
     normalized.startsWith('ESTABELECIMENTO ') ||
     normalized.startsWith('VALOR ') ||
@@ -392,13 +624,13 @@ function parseTransactionFallback(rows, mesFatura) {
   let pending = null;
 
   for (const row of rows) {
-    const text = normalizeLine(row.text);
+    const text = limparRuidoEstruturalLinha(normalizeLine(row.text));
     if (!text || isIgnorableRow(text) || matchesAny(text, SECTION_PATTERNS.installments)) {
       pending = null;
       continue;
     }
 
-    if (RE_DATA_SLASH.test(text)) {
+    if (startsWithTransactionDate(text)) {
       pending = text;
       continue;
     }
@@ -427,10 +659,10 @@ function parseTransactionRawGroupFallback(grupos, mesFatura) {
 
   for (const grupo of grupos) {
     const itens = grupo
-      .map(item => normalizeLine(item.str))
+      .map(item => limparRuidoEstruturalLinha(normalizeLine(item.str)))
       .filter(Boolean);
 
-    const dataIndex = itens.findIndex(item => RE_DATA_SLASH.test(item));
+    const dataIndex = itens.findIndex(item => startsWithTransactionDate(item));
     const valorIndex = findLastIndex(itens, item => RE_VALOR_ITEM.test(item));
     if (dataIndex < 0 || valorIndex <= dataIndex) continue;
 
@@ -452,15 +684,15 @@ function parseTransactionRawGroupFallback(grupos, mesFatura) {
 function parseTransactionSlidingGroupFallback(grupos, mesFatura) {
   const prepared = grupos.map(grupo => ({
     page: grupo[0]?.page ?? 1,
-    tokens: grupo.map(item => normalizeLine(item.str)).filter(Boolean),
-    text: grupo.map(item => normalizeLine(item.str)).filter(Boolean).join(' '),
+    tokens: grupo.map(item => limparRuidoEstruturalLinha(normalizeLine(item.str))).filter(Boolean),
+    text: grupo.map(item => limparRuidoEstruturalLinha(normalizeLine(item.str))).filter(Boolean).join(' '),
   }));
 
   const lancamentos = [];
 
   for (let i = 0; i < prepared.length; i++) {
     const current = prepared[i];
-    if (!current.tokens.some(token => RE_DATA_SLASH.test(token))) continue;
+    if (!current.tokens.some(token => startsWithTransactionDate(token))) continue;
     if (isIgnorableRow(current.text)) continue;
 
     let buffer = [...current.tokens];
@@ -472,8 +704,8 @@ function parseTransactionSlidingGroupFallback(grupos, mesFatura) {
         if (next.page !== current.page) break;
         if (isIgnorableRow(next.text)) continue;
 
-        const hasNewDate = next.tokens.some(token => RE_DATA_SLASH.test(token));
-        const alreadyHasValue = findLastIndex(buffer, token => RE_VALOR_ITEM.test(token)) > buffer.findIndex(token => RE_DATA_SLASH.test(token));
+        const hasNewDate = next.tokens.some(token => startsWithTransactionDate(token));
+        const alreadyHasValue = findLastIndex(buffer, token => RE_VALOR_ITEM.test(token)) > buffer.findIndex(token => startsWithTransactionDate(token));
         if (hasNewDate && alreadyHasValue) {
           break;
         }
@@ -503,7 +735,7 @@ function parseTransactionLine(text, mesFatura) {
   const valor = parseBRL(rawValor);
   const desc = sanitizarDescricaoItau(rawDesc);
 
-  if (!dataInfo || !Number.isFinite(valor) || valor <= 0 || !desc || desc.length < 2) {
+  if (!dataInfo || !Number.isFinite(valor) || valor === 0 || !desc || desc.length < 2) {
     return null;
   }
 
@@ -520,12 +752,12 @@ function parseTransactionRawLinesFallback(linhas, mesFatura) {
   const lancamentos = [];
 
   for (let i = 0; i < linhas.length; i++) {
-    let buffer = normalizeLine(linhas[i]);
+    let buffer = limparRuidoEstruturalLinha(normalizeLine(linhas[i]));
     if (!buffer || isIgnorableRow(buffer)) continue;
 
     for (let j = i; j < Math.min(i + 4, linhas.length); j++) {
       if (j > i) {
-        const next = normalizeLine(linhas[j]);
+        const next = limparRuidoEstruturalLinha(normalizeLine(linhas[j]));
         if (!next || isIgnorableRow(next)) continue;
         buffer = `${buffer} ${next}`.trim();
       }
@@ -543,7 +775,7 @@ function parseTransactionRawLinesFallback(linhas, mesFatura) {
 }
 
 function parseTransactionTokens(tokens, mesFatura) {
-  const dataIndex = tokens.findIndex(token => RE_DATA_SLASH.test(token));
+  const dataIndex = tokens.findIndex(token => startsWithTransactionDate(token));
   const valorIndex = findLastIndex(tokens, token => RE_VALOR_ITEM.test(token));
   if (dataIndex < 0 || valorIndex <= dataIndex) return null;
 
@@ -610,7 +842,7 @@ function sanitizarDescricaoItau(rawDesc) {
 }
 
 function extractTransactionCandidate(text) {
-  const normalized = normalizeLine(text);
+  const normalized = limparRuidoEstruturalLinha(normalizeLine(text));
   if (!normalized) return null;
 
   const strict = normalized.match(RE_TRANSACAO);
@@ -623,7 +855,7 @@ function extractTransactionCandidate(text) {
   }
 
   const dataMatch = normalized.match(/(\d{2}\/\d{2}(?:\/\d{4})?)/);
-  const valores = [...normalized.matchAll(/([\d.]{1,10},\d{2})/g)];
+  const valores = [...normalized.matchAll(/(-?[\d.]{1,10},\d{2})/g)];
   const valorMatch = valores.at(-1);
   if (!dataMatch || !valorMatch) return null;
 
@@ -637,6 +869,23 @@ function extractTransactionCandidate(text) {
   if (!rawDesc) return null;
 
   return { rawData, rawDesc, rawValor };
+}
+
+function limparRuidoEstruturalLinha(text) {
+  let cleaned = normalizeLine(text);
+  if (!cleaned) return '';
+
+  cleaned = cleaned
+    .replace(/^DATA\s+ESTABELECIMENTO\s+VALOR\s+EM\s+R\$\s*/i, '')
+    .replace(/^ESTABELECIMENTO\s+VALOR\s+EM\s+R\$\s*/i, '')
+    .replace(/^DATA\s+ESTABELECIMENTO\s*/i, '')
+    .replace(/^VALOR\s+EM\s+R\$\s*/i, '')
+    .replace(/\s+Lançamentos no cartão\s+\(final\s+\d{4}\)\s+[\d.]{1,10},\d{2}\s*$/i, '')
+    .replace(/\s+L\s*Total dos lançamentos atuais\s+[\d.]{1,10},\d{2}\s*$/i, '')
+    .replace(/\s+Total dos lançamentos atuais\s+[\d.]{1,10},\d{2}\s*$/i, '')
+    .trim();
+
+  return cleaned;
 }
 
 function dedupeLancamentos(lancamentos) {
@@ -681,6 +930,10 @@ function parseDataItau(rawData, mesFatura) {
     data: `${dd}/${String(idxTransacao + 1).padStart(2, '0')}/${yyyy}`,
     mes: `${MESES_ABREV[idxTransacao]}/${yyyy}`,
   };
+}
+
+function startsWithTransactionDate(text) {
+  return RE_DATA_SLASH.test(text) || RE_DATA_PREFIX.test(text);
 }
 
 function normalizeLine(line) {

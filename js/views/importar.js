@@ -83,11 +83,19 @@ function _bindConfigSection() {
 
   exportButton.addEventListener('click', async () => {
     resultEl.innerHTML = '';
-    await exportConfig();
-    _renderConfigResult('success', 'Configuração exportada com sucesso. Guarde o JSON como backup ou para migração.');
+    try {
+      const resultado = await exportConfig();
+      _renderConfigResult(
+        'success',
+        `Configuração exportada com sucesso${resultado?.nomeArquivo ? ` (${resultado.nomeArquivo})` : ''}. Guarde o JSON como backup ou para migração.`,
+      );
+    } catch (error) {
+      _renderConfigResult('error', error instanceof Error ? error.message : 'Falha ao exportar configuração.');
+    }
   });
 
   importButton.addEventListener('click', () => {
+    fileInput.value = '';
     fileInput.click();
   });
 

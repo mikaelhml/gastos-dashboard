@@ -23,21 +23,16 @@ export async function exportConfig() {
   );
 
   const dateStamp = new Date().toISOString().slice(0, 10);
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `gastos-config-${dateStamp}.json`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  const fileName = `gastos-config-${dateStamp}.json`;
+  downloadJsonBlob(blob, fileName);
+  return { nomeArquivo: fileName };
 }
 
 export async function importConfig(file) {
   try {
     await openDB();
 
-    const rawText = await file.text();
+    const rawText = await readTextFile(file);
     const parsed = JSON.parse(rawText);
     validateConfig(parsed);
 
@@ -153,4 +148,36 @@ function normalizeDespesa(item) {
 
 function normalizeKey(value) {
   return String(value ?? '').trim().toLocaleLowerCase('pt-BR');
+}
+
+function readTextFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = event => {
+      const text = String(event.target?.result ?? '');
+      resolve(text.replace(/^\uFEFF/, ''));
+    };
+    reader.onerror = () => reject(new Error('Falha ao ler o arquivo JSON.'));
+    reader.readAsText(file, 'utf-8');
+  });
+}
+
+function downloadJsonBlob(blob, fileName) {
+  const nav = window.navigator;
+  if (typeof nav.msSaveOrOpenBlob === 'function') {
+    nav.msSaveOrOpenBlob(blob, fileName);
+    return;
+  }
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  window.setTimeout(() => {
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, 1000);
 }

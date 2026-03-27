@@ -19,7 +19,7 @@ import { buildParcelamentos }           from './views/parcelamentos.js';
 import { initLancamentos, filterLancamentos, clearLancamentosFilters } from './views/lancamentos.js';
 import { initExtrato, filterExtrato, clearExtratoFilters }   from './views/extrato.js';
 import { initProjecao, recalcularProjecao } from './views/projecao.js';
-import { buildImportar, clearBase }     from './views/importar.js';
+import { buildImportar, clearBase, clearAllDashboardData }     from './views/importar.js';
 
 let _refreshChain = Promise.resolve();
 
@@ -59,6 +59,7 @@ async function loadDashboardData() {
     extratoTransacoes,
     extratoSummary,
     orcamentos,
+    assinaturaSugestoesDispensa,
   ] = await Promise.all([
     getAll('assinaturas'),
     getAll('observacoes'),
@@ -67,6 +68,7 @@ async function loadDashboardData() {
     getAll('extrato_transacoes'),
     getAll('extrato_summary'),
     getAll('orcamentos'),
+    getAll('assinatura_sugestoes_dispensa'),
   ]);
 
   extratoSummary.sort((a, b) => {
@@ -85,6 +87,7 @@ async function loadDashboardData() {
     extratoTransacoes,
     extratoSummary,
     orcamentos,
+    assinaturaSugestoesDispensa,
   };
 }
 
@@ -120,10 +123,11 @@ async function renderDashboard() {
     extratoTransacoes,
     extratoSummary,
     orcamentos,
+    assinaturaSugestoesDispensa,
   } = await loadDashboardData();
 
   buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, extratoTransacoes, lancamentos);
-  buildAssinaturas(assinaturas, observacoes);
+  buildAssinaturas(assinaturas, observacoes, lancamentos, extratoTransacoes, assinaturaSugestoesDispensa);
   buildDespesasFixas(despesasFixas);
   buildParcelamentos(despesasFixas, lancamentos);
   initLancamentos(lancamentos, extratoTransacoes, assinaturas, despesasFixas);
@@ -186,6 +190,7 @@ window.filterExtrato      = filterExtrato;
 window.clearExtratoFilters = clearExtratoFilters;
 window.recalcularProjecao = recalcularProjecao;
 window.clearBase          = clearBase;
+window.clearAllDashboardData = clearAllDashboardData;
 window.refreshDashboard   = refreshDashboard;
 
 // Emoji picker helpers — usados pelos onclick inline no HTML

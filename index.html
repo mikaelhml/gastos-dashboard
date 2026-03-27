@@ -15,7 +15,7 @@
      O módulo sobrescreve cada função com a implementação real ao executar. */
   ['switchTab','filterLancamentos','clearLancamentosFilters',
    'filterExtrato','clearExtratoFilters','recalcularProjecao',
-   'clearBase','refreshDashboard','selectEmoji','syncEmojiPicker',
+   'clearBase','clearAllDashboardData','refreshDashboard','selectEmoji','syncEmojiPicker',
    'toggleEmojiPicker'].forEach(function(fn){ window[fn] = function(){}; });
 </script>
 
@@ -197,6 +197,16 @@
       </div>
     </form>
     <div id="assinaturaFormFeedback" class="inline-form-feedback"></div>
+  </div>
+  <div class="helper-panel assinatura-sugestoes-panel">
+    <div class="helper-panel-header">
+      <div>
+        <h3>💡 Sugestões automáticas de assinatura</h3>
+        <p>Lançamentos detectados em 2 meses ou mais com o mesmo valor podem virar assinatura com um clique.</p>
+      </div>
+    </div>
+    <div id="assinaturaSuggestions"></div>
+    <div id="assinaturaSuggestionsFeedback" class="inline-form-feedback"></div>
   </div>
   <div class="section-title">✅ Recorrentes Mensais</div>
   <div class="sub-grid" id="subGrid"></div>
@@ -694,9 +704,14 @@
       Remove todas as transações do extrato, lançamentos de fatura e registro de PDFs importados.<br>
       <strong style="color:#a0aec0">Assinaturas e despesas fixas são mantidas.</strong>
     </p>
-    <button class="btn-danger" onclick="clearBase()">
-      🗑️ Limpar todos os dados importados
-    </button>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <button class="btn-danger" onclick="clearBase()">
+        🗑️ Limpar dados importados
+      </button>
+      <button class="btn-danger" style="background:#4a1717;border-color:#feb2b2;color:#feb2b2" onclick="clearAllDashboardData()">
+        ☢️ Limpar base completa
+      </button>
+    </div>
   </div>
 </div>
 
@@ -719,6 +734,8 @@
         <li>🧱 Conversão para despesa fixa, parcelamento e financiamento agora salva o schema correto, evitando itens sem descrição</li>
         <li>🛡️ Despesas fixas antigas/importadas são normalizadas automaticamente com compatibilidade entre <code>desc</code>, <code>nome</code> e <code>parcelas</code></li>
         <li>🔎 Parser Itaú multi-cartão passou a preservar a origem de cada linha e bloquear lançamentos contaminados com descrição numérica</li>
+        <li>💡 Aba <code>Assinaturas</code> agora sugere conversão automática quando o mesmo lançamento aparece em 2 meses ou mais com o mesmo valor</li>
+        <li>🧹 Aba <code>Importar</code> ganhou um novo botão para limpar a base completa, mantendo o botão antigo de limpar apenas os dados importados</li>
       </ul>
     </div>
 

@@ -9,7 +9,7 @@
  *   - Botão "Limpar base importada"
  */
 
-import { getStoreCounts, clearAllImported } from '../db.js';
+import { getStoreCounts, clearAllImported, clearAllData } from '../db.js';
 import { detectarLayoutProfile }            from '../parsers/layout-profiles.js';
 import { escapeHtml }                       from '../utils/dom.js';
 import { exportConfig, importConfig }       from '../utils/config-io.js';
@@ -327,6 +327,25 @@ export async function clearBase() {
   if (!ok) return;
 
   await clearAllImported();
+  location.reload();
+}
+
+export async function clearAllDashboardData() {
+  const ok = confirm(
+    '⚠️ Apagar a base completa?\n\n' +
+    'Serão removidos:\n' +
+    '  • Todas as transações do extrato\n' +
+    '  • Todos os lançamentos de fatura\n' +
+    '  • Registro de PDFs importados\n' +
+    '  • Assinaturas\n' +
+    '  • Despesas fixas\n' +
+    '  • Observações\n' +
+    '  • Orçamentos\n\n' +
+    'Essa ação não pode ser desfeita.',
+  );
+  if (!ok) return;
+
+  await clearAllData();
   location.reload();
 }
 

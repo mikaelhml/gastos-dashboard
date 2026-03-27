@@ -13,7 +13,7 @@
  */
 
 const DB_NAME    = 'gastos_db_public';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 const STORE_DEFS = [
   { name: 'assinaturas',          keyPath: 'id',   autoIncrement: true  },
@@ -24,6 +24,7 @@ const STORE_DEFS = [
   { name: 'extrato_summary',      keyPath: 'mes',  autoIncrement: false },
   { name: 'pdfs_importados',      keyPath: 'hash', autoIncrement: false },
   { name: 'orcamentos',           keyPath: 'cat',  autoIncrement: false },
+  { name: 'assinatura_sugestoes_dispensa', keyPath: 'key', autoIncrement: false },
 ];
 
 let _db = null;
@@ -151,6 +152,19 @@ export async function clearAllImported() {
   await clearStore('extrato_summary');
   await clearStore('lancamentos');
   await clearStore('pdfs_importados');
+  await clearStore('assinatura_sugestoes_dispensa');
+}
+
+export async function clearAllData() {
+  await clearStore('extrato_transacoes');
+  await clearStore('extrato_summary');
+  await clearStore('lancamentos');
+  await clearStore('pdfs_importados');
+  await clearStore('assinaturas');
+  await clearStore('despesas_fixas');
+  await clearStore('observacoes');
+  await clearStore('orcamentos');
+  await clearStore('assinatura_sugestoes_dispensa');
 }
 
 // ── Contagens para status ─────────────────────────────────────────────────────

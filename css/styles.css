@@ -264,6 +264,32 @@ tr:hover td { background: #2d3748; }
 .sub-value { font-weight: 700; font-size: 1.05rem; color: #63b3ed; white-space: nowrap; text-align: left; }
 .sub-anual { font-size: 0.78rem; color: #718096; margin-top: 4px; }
 .sub-card-actions { display: flex; align-items: center; justify-content: flex-end; }
+.assinatura-sugestoes-panel {
+  margin-bottom: 24px;
+}
+.assinatura-suggestion-card {
+  background: linear-gradient(180deg, rgba(79, 209, 197, 0.06) 0%, #1a202c 100%);
+}
+.assinatura-suggestion-evidence {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.assinatura-suggestion-label {
+  font-size: 0.74rem;
+  color: #a0aec0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.assinatura-suggestion-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.assinatura-suggestion-actions .btn-inline-secondary,
+.assinatura-suggestion-actions .btn-inline-danger {
+  flex: 1 1 180px;
+}
 .renewal-badge-urgent,
 .renewal-badge-soon {
   display: inline-flex;

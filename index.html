@@ -716,6 +716,9 @@
         <li>💱 O parser internacional usa o valor final em reais e ignora corretamente IOF, subtotais e blocos financeiros laterais</li>
         <li>🏷️ Detecção ampliada de perfil Itaú com suporte a âncoras como <code>MASTERCARD</code>, <code>BLACK</code>, <code>USD</code> e <code>Dólar de Conversão</code></li>
         <li>🧪 Validação com PDFs reais para confirmar o roteamento dos novos layouts Itaú adicionados na pasta de testes</li>
+        <li>🧱 Conversão para despesa fixa, parcelamento e financiamento agora salva o schema correto, evitando itens sem descrição</li>
+        <li>🛡️ Despesas fixas antigas/importadas são normalizadas automaticamente com compatibilidade entre <code>desc</code>, <code>nome</code> e <code>parcelas</code></li>
+        <li>🔎 Parser Itaú multi-cartão passou a preservar a origem de cada linha e bloquear lançamentos contaminados com descrição numérica</li>
       </ul>
     </div>
 

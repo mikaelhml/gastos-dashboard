@@ -13,7 +13,7 @@
  */
 
 const DB_NAME    = 'gastos_db_public';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 const STORE_DEFS = [
   { name: 'assinaturas',          keyPath: 'id',   autoIncrement: true  },

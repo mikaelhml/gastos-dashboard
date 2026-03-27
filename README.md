@@ -4,9 +4,9 @@ Dashboard web offline-first para controle financeiro pessoal, com persistencia l
 
 ## Status atual do projeto
 
-- **Fase 8:** operacionalizacao inicial do Registrato / SCR concluida
+- **Fase 9:** refinamento visual do dashboard + correcao de migracao IndexedDB
 - **Versao publica:** limpa, sem seeds pessoais
-- **Fase atual:** consolidacao visual do Registrato + validacao final
+- **Fase atual:** estabilizacao final do fluxo Registrato + parser Itaú
 - **Hospedagem alvo:** GitHub Pages
 
 Hoje o projeto ja entrega:
@@ -20,6 +20,8 @@ Hoje o projeto ja entrega:
 - inferencia inicial de parcelas e data de inicio para compromissos financeiros
 - KPIs resumidos do SCR na visao geral
 - bloco informativo do SCR na projecao
+- refinamento visual da navegacao, cards, paines e changelog
+- migracao do IndexedDB corrigida para criar stores faltantes em bases antigas
 - suporte a senha de PDF com reutilizacao automatica na sessao
 
 ## O que esta estavel
@@ -36,15 +38,15 @@ Hoje o projeto ja entrega:
 - parser de faturas Itaú/Visa em variantes de layout, especialmente `Uniclass/Signature`
 - heuristicas para OCR ruim e linhas quebradas em PDFs de fatura
 - calibracao final das heuristicas do Registrato
-- superficie visual dedicada para historico e distribuicao do SCR
+- parser de faturas Itaú/Visa em variantes de layout, especialmente `Uniclass/Signature`
 
 ## Proximos passos
 
-1. criar uma view dedicada do Registrato com historico mensal, distribuicao e detalhamento por instituicao
-2. validar o fluxo completo do SCR com o PDF real no navegador e recalibrar falsos positivos
-3. estabilizar de vez o parser de faturas Itaú/Visa, principalmente os PDFs que ainda retornam `0 lançamentos`
-4. separar melhor perfis/layouts de fatura Itaú comum vs Itaú Uniclass/Signature
-5. ampliar diagnostico para novos layouts de PDF quando necessario
+1. calibrar as sugestoes do Registrato com uso real no navegador
+2. estabilizar de vez o parser de faturas Itaú/Visa, principalmente os PDFs que ainda retornam `0 lançamentos`
+3. separar melhor perfis/layouts de fatura Itaú comum vs Itaú Uniclass/Signature
+4. ampliar diagnostico para novos layouts de PDF quando necessario
+5. revisar microinteracoes e consistencia visual nas abas restantes
 
 ## Fluxo recomendado de uso
 

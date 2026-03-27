@@ -94,6 +94,7 @@ async function loadDashboardData() {
 function normalizeDespesaFixa(item) {
   const desc = String(item?.desc ?? item?.nome ?? '').trim();
   const nome = String(item?.nome ?? item?.desc ?? '').trim();
+  const recorrencia = String(item?.recorrencia ?? 'fixa').trim() || 'fixa';
   const parcelas = item?.parcelas ?? (
     item?.tipo && Number.isInteger(Number(item?.pagas)) && Number.isInteger(Number(item?.total)) && item?.inicio
       ? {
@@ -110,6 +111,7 @@ function normalizeDespesaFixa(item) {
     ...item,
     desc,
     nome,
+    recorrencia,
     parcelas,
   };
 }

@@ -19,6 +19,7 @@ export function buildDespesasFixas(despesasFixas) {
     const obsText = d.obs || '';
     const isNew  = obsText.includes('NOVO');
     const isParc = !!d.parcelas;
+    const isVariavel = d.recorrencia === 'variavel';
     let parcCol  = '';
 
     if (isParc) {
@@ -55,12 +56,18 @@ export function buildDespesasFixas(despesasFixas) {
 
     const rowClass = isParc
       ? (d.parcelas.tipo === 'financiamento' ? 'row-financ' : 'row-parcela')
-      : '';
+      : (isVariavel ? 'row-recorrente-variavel' : '');
+
+    const tipoBadge = isParc
+      ? ''
+      : isVariavel
+        ? ' <span class="badge badge-yellow" style="font-size:0.72rem;margin-left:6px">📈 Variavel</span>'
+        : '';
 
     tbody.innerHTML += `
       <tr class="${rowClass}">
         <td><span class="badge ${isNew ? 'badge-green' : 'badge-blue'}">${escapeHtml(d.cat)}</span></td>
-        <td>${escapeHtml(d.desc)}${isNew ? ' <span style="font-size:0.75rem;color:#68d391">✨ Novo</span>' : ''}</td>
+        <td>${escapeHtml(d.desc)}${tipoBadge}${isNew ? ' <span style="font-size:0.75rem;color:#68d391">✨ Novo</span>' : ''}</td>
         <td><strong>${fmt(d.valor)}</strong><br><span style="font-size:0.75rem;color:#718096">/mês</span></td>
         <td>${parcCol}</td>
         <td style="text-align:right">
@@ -108,7 +115,7 @@ function bindDespesaForm() {
       return;
     }
 
-    await addItem('despesas_fixas', { cat, desc, nome: desc, valor, obs });
+    await addItem('despesas_fixas', { cat, desc, nome: desc, valor, obs, recorrencia: 'fixa' });
 
     form.reset();
     setFeedback('despesaFormFeedback', 'Despesa fixa adicionada com sucesso.', 'success');

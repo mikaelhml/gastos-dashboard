@@ -94,6 +94,7 @@ function buildTipoBadge(l) {
   const map = {
     assinatura:    { cls: 'tipo-badge-assinatura',   icon: '🔁', label: 'Assinatura' },
     despesa:       { cls: 'tipo-badge-despesa',       icon: '📋', label: 'Despesa Fixa' },
+    despesa_variavel: { cls: 'tipo-badge-despesa-variavel', icon: '📈', label: 'Despesa Variavel' },
     parcelamento:  { cls: 'tipo-badge-parcelamento',  icon: '📦', label: 'Parcelamento' },
     financiamento: { cls: 'tipo-badge-financiamento', icon: '🏦', label: 'Financiamento' },
   };
@@ -175,6 +176,7 @@ function renderLancamentos(data) {
         ? `<div class="cell-actions">
             <button type="button" class="btn-inline-secondary" data-lancamento-action="assinatura" data-lancamento-id="${l.id ?? ''}">Assinatura</button>
             <button type="button" class="btn-inline-secondary" data-lancamento-action="despesa" data-lancamento-id="${l.id ?? ''}">Despesa</button>
+            <button type="button" class="btn-inline-secondary" data-lancamento-action="despesa_variavel" data-lancamento-id="${l.id ?? ''}">Variavel</button>
             <button type="button" class="btn-inline-secondary" data-lancamento-action="parcelamento" data-lancamento-id="${l.id ?? ''}">Parcelamento</button>
             <button type="button" class="btn-inline-secondary" data-lancamento-action="financiamento" data-lancamento-id="${l.id ?? ''}">Financiamento</button>
           </div>`
@@ -306,6 +308,16 @@ function bindConvertDialog() {
         await addItem('assinaturas', { icon, nome, cat, valor });
       } else if (action === 'despesa') {
         await addItem('despesas_fixas', { icon, nome, desc: nome, cat, valor, obs });
+      } else if (action === 'despesa_variavel') {
+        await addItem('despesas_fixas', {
+          icon,
+          nome,
+          desc: nome,
+          cat,
+          valor,
+          obs,
+          recorrencia: 'variavel',
+        });
       } else if (action === 'parcelamento') {
         const pagas = parseInt(document.getElementById('convertPagas').value, 10) || 1;
         const total = parseInt(document.getElementById('convertTotal').value, 10) || 12;
@@ -395,7 +407,7 @@ function openConvertDialog(lancamento, action) {
   const obsField = document.getElementById('convertObsField');
   if (obsField) obsField.style.display = action === 'assinatura' ? 'none' : '';
   const iconField = document.getElementById('convertIconField');
-  if (iconField) iconField.style.display = action === 'despesa' || action === 'assinatura' ? '' : 'none';
+  if (iconField) iconField.style.display = action === 'despesa' || action === 'despesa_variavel' || action === 'assinatura' ? '' : 'none';
 
   if (titleEl)   titleEl.textContent = getDialogTitle(action);
   if (submitBtn) submitBtn.textContent = getDialogSubmitLabel(action);
@@ -538,6 +550,7 @@ function extrairParcelaPadrao(parcela, tipo) {
 function getDialogTitle(action) {
   if (action === 'assinatura')   return 'Converter em assinatura';
   if (action === 'despesa')      return 'Converter em despesa fixa';
+  if (action === 'despesa_variavel') return 'Converter em despesa recorrente variavel';
   if (action === 'parcelamento') return 'Registrar parcelamento';
   return 'Registrar financiamento';
 }
@@ -545,6 +558,7 @@ function getDialogTitle(action) {
 function getDialogSubmitLabel(action) {
   if (action === 'assinatura')   return 'Salvar assinatura';
   if (action === 'despesa')      return 'Salvar despesa fixa';
+  if (action === 'despesa_variavel') return 'Salvar despesa variavel';
   if (action === 'parcelamento') return 'Salvar parcelamento';
   return 'Salvar financiamento';
 }

@@ -138,6 +138,7 @@ function normalizeDespesa(item) {
   const desc = String(item.desc ?? item.nome ?? '').trim();
   const valor = Number(item.valor);
   const obs = String(item.obs ?? 'Mensal — importado de configuracao').trim() || 'Mensal — importado de configuracao';
+  const recorrencia = String(item.recorrencia ?? 'fixa').trim() || 'fixa';
   const parcelas = item.parcelas && typeof item.parcelas === 'object'
     ? normalizeParcelas(item.parcelas)
     : (
@@ -155,7 +156,7 @@ function normalizeDespesa(item) {
     throw new Error(`Despesa fixa invalida: ${desc || '(sem descricao)'}.`);
   }
 
-  return { cat, desc, nome: desc, valor, obs, ...(parcelas ? { parcelas } : {}) };
+  return { cat, desc, nome: desc, valor, obs, recorrencia, ...(parcelas ? { parcelas } : {}) };
 }
 
 function normalizeParcelas(item) {

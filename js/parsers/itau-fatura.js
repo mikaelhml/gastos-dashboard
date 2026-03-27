@@ -8,10 +8,16 @@ const RE_DATA_SLASH = /^\d{2}\/\d{2}(?:\/\d{4})?$/;
 const RE_DATA_PREFIX = /^[^\d]*\d{2}\/\d{2}(?:\/\d{4})?(?:\s|$)/;
 const RE_VALOR_ITEM = /^-?[\d.]{1,10},\d{2}$/;
 const RE_TRANSACAO = /^[^\d]*(\d{2}\/\d{2}(?:\/\d{4})?)\s+(.+?)\s+(-?[\d.]{1,10},\d{2})$/;
+const ITAU_FATURA_PROFILE = {
+  DOMESTIC_CLASSIC: 'itau-domestico-classico',
+  DOMESTIC_MULTICARD: 'itau-domestico-multicartao',
+  INTERNATIONAL_BLACK: 'itau-internacional-black',
+};
 
 const SECTION_PATTERNS = {
   purchases: ['LANCAMENTOS COMPRAS E SAQUES'],
   services: ['LANCAMENTOS PRODUTOS SERVICOS', 'LANCAMENTOS PRODUTOS E SERVICOS'],
+  international: ['LANCAMENTOS INTERNACIONAIS'],
   // installments encerra a seção de compras (esses lançamentos são de faturas futuras)
   installments: ['COMPRAS PARCELADAS', 'PROXIMAS FATURAS', 'PROXIMA FATURA'],
   payments: ['PAGAMENTO EFETUADO', 'PAGAMENTOS EFETUADOS', 'TOTAL DOS PAGAMENTOS', 'PAGAMENTO VIA CONTA'],
@@ -41,6 +47,10 @@ const SECTION_PATTERNS = {
     'ANUIDADE DIFERENCIADA',
     'LANCAMENTOS NACIONAIS',
     'LANCAMENTOS INTERNACIONAIS',
+    'TOTAL TRANSACOES INTER',
+    'TOTAL LANCAMENTOS INTER',
+    'REPASSE DE IOF',
+    'DOLAR DE CONVERSAO',
     'TOTAL DOS LANCAMENTOS',
     'FIQUE ATENTO',
     'SIMULACAO',
@@ -88,8 +98,11 @@ export async function importarItauFatura(file, onProgress = () => {}) {
   }
 
   const mesFatura = extrairMesFaturaItau(linhas);
-  const lancamentos = parsearLancamentosItau(linhasColunadas, grupos, linhasRaw, paginas, mesFatura);
-  console.log(`[itau-fatura] "${file.name}": ${lancamentos.length} lançamentos, fatura=${mesFatura || 'não identificada'}`);
+  const profile = detectarPerfilFaturaItau(linhas);
+  const lancamentos = parsearLancamentosItau(linhasColunadas, grupos, linhasRaw, paginas, mesFatura, profile);
+  console.log(
+    `[itau-fatura] "${file.name}": ${lancamentos.length} lançamentos, fatura=${mesFatura || 'não identificada'}, perfil=${profile}`
+  );
 
   if (lancamentos.length === 0) {
     if (isFaturaSemLancamentos(linhas)) {
@@ -371,7 +384,41 @@ function extrairMesFaturaItau(linhas) {
   return null;
 }
 
-function parsearLancamentosItau(linhasColunadas, grupos, linhasRaw, paginas, mesFatura) {
+function detectarPerfilFaturaItau(linhas) {
+  const sample = normalizeForMatch(linhas.slice(0, 240).join(' '));
+  const finais = sample.match(/\bFINAL\s+\d{4}\b/g) ?? [];
+
+  if (
+    sample.includes('LANCAMENTOS INTERNACIONAIS') &&
+    (
+      sample.includes('US R') ||
+      sample.includes('USD') ||
+      sample.includes('DOLAR DE CONVERSAO')
+    )
+  ) {
+    return ITAU_FATURA_PROFILE.INTERNATIONAL_BLACK;
+  }
+
+  if (
+    finais.length > 1 ||
+    sample.includes('LANCAMENTOS PRODUTOS E SERVICOS') ||
+    sample.includes('COMPRAS PARCELADAS PROXIMAS FATURAS')
+  ) {
+    return ITAU_FATURA_PROFILE.DOMESTIC_MULTICARD;
+  }
+
+  return ITAU_FATURA_PROFILE.DOMESTIC_CLASSIC;
+}
+
+function parsearLancamentosItau(linhasColunadas, grupos, linhasRaw, paginas, mesFatura, profile) {
+  if (profile === ITAU_FATURA_PROFILE.INTERNATIONAL_BLACK) {
+    return parsearLancamentosItauInternacional(paginas, mesFatura);
+  }
+
+  return parsearLancamentosItauDomestico(linhasColunadas, grupos, linhasRaw, paginas, mesFatura);
+}
+
+function parsearLancamentosItauDomestico(linhasColunadas, grupos, linhasRaw, paginas, mesFatura) {
   const colunas = separarPorColuna(linhasColunadas);
   const directRows = parseTransactionColumnDirect(paginas, mesFatura);
 
@@ -420,6 +467,61 @@ function parsearLancamentosItau(linhasColunadas, grupos, linhasRaw, paginas, mes
       ? { ...lancamento, ...parcelaInfo }
       : lancamento;
   });
+}
+
+function parsearLancamentosItauInternacional(paginas, mesFatura) {
+  const lancamentos = [];
+
+  for (const pagina of paginas) {
+    const estrutura = montarEstruturaPaginaColunas(pagina);
+    const mergedRows = [
+      ...estrutura.fullWidthRows.map(row => ({ ...row, _col: -1 })),
+      ...estrutura.leftRows.map(row => ({ ...row, _col: 0 })),
+      ...estrutura.rightRows.map(row => ({ ...row, _col: 1 })),
+    ].sort((a, b) => {
+      if (a.page !== b.page) return a.page - b.page;
+      if (a.y !== b.y) return b.y - a.y;
+      return a._col - b._col;
+    });
+
+    let active = false;
+
+    for (const row of mergedRows) {
+      const raw = normalizeLine(row.raw);
+      if (!raw) continue;
+
+      if (matchesAny(raw, SECTION_PATTERNS.international)) {
+        active = true;
+        continue;
+      }
+
+      if (!active) continue;
+
+      if (row._col === -1 && isInternationalStopRow(raw)) {
+        active = false;
+        continue;
+      }
+
+      if (row._col !== 0) continue;
+
+      const text = limparRuidoEstruturalLinha(raw);
+      if (!text || isIgnorableInternationalRow(text)) continue;
+
+      if (isInternationalStopRow(text)) {
+        active = false;
+        continue;
+      }
+
+      if (!startsWithTransactionDate(text)) continue;
+
+      const parsed = parseTransactionLine(text, mesFatura);
+      if (parsed) {
+        lancamentos.push(parsed);
+      }
+    }
+  }
+
+  return dedupeLancamentos(lancamentos);
 }
 
 function parseTransactionColumnDirect(paginas, mesFatura) {
@@ -617,6 +719,42 @@ function isIgnorableRow(text) {
     normalized.startsWith('VALOR ') ||
     normalized.startsWith('PRODUTOS ') ||
     normalized.startsWith('SERVICOS ')
+  );
+}
+
+function isIgnorableInternationalRow(text) {
+  const normalized = normalizeForMatch(text);
+  return (
+    isIgnorableRow(text) ||
+    normalized.startsWith('DATA ESTABELECIMENTO US R') ||
+    normalized.startsWith('LANCAMENTOS INTERNACIONAIS') ||
+    normalized.startsWith('LIMITE TOTAL') ||
+    normalized.startsWith('LIMITE DISPONIVEL') ||
+    normalized.startsWith('ENCARGOS COBRADOS') ||
+    normalized.startsWith('JUROS DO ROTATIVO') ||
+    normalized.startsWith('JUROS DE MORA') ||
+    normalized.startsWith('MULTA POR ATRASO') ||
+    normalized.startsWith('FIQUE ATENTO') ||
+    normalized.startsWith('PERIODO') ||
+    normalized.startsWith('CONTINUA') ||
+    normalized.startsWith('PC 00') ||
+    normalized.startsWith('4004 4828') ||
+    normalized.startsWith('0800 970 4828') ||
+    normalized.startsWith('DOLAR DE CONVERSAO')
+  );
+}
+
+function isInternationalStopRow(text) {
+  const normalized = normalizeForMatch(text);
+  return (
+    normalized.startsWith('TOTAL TRANSACOES INTER EM R') ||
+    normalized.startsWith('REPASSE DE IOF EM R') ||
+    normalized.startsWith('TOTAL LANCAMENTOS INTER EM R') ||
+    normalized.includes('L TOTAL DOS LANCAMENTOS ATUAIS') ||
+    normalized.startsWith('ENCARGOS COBRADOS NESTA FATURA') ||
+    normalized.startsWith('NOVO TETO DE JUROS') ||
+    normalized.startsWith('SIMULACAO DE COMPRAS') ||
+    normalized.startsWith('SIMULACAO SAQUE CASH')
   );
 }
 

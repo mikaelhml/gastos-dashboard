@@ -651,7 +651,7 @@
     <div class="helper-title">Perfis suportados hoje</div>
     <div class="helper-badges">
       <span class="badge badge-blue">Extrato Nubank Conta</span>
-      <span class="badge badge-yellow">Fatura Itaú/Visa</span>
+      <span class="badge badge-yellow">Fatura Itaú</span>
       <span class="badge badge-purple">Fatura Nubank</span>
     </div>
     <p class="helper-text">Se um PDF não for reconhecido, o app mostra isso no log de importação para facilitar a criação de um novo perfil.</p>
@@ -707,8 +707,22 @@
   <div style="display:flex;flex-direction:column;gap:16px">
     <div style="background:#1a202c;border:1px solid #2d3748;border-radius:12px;padding:20px 24px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-        <span style="font-size:1.1rem;font-weight:700;color:#e2e8f0">Fase 6 — v3</span>
+        <span style="font-size:1.1rem;font-weight:700;color:#e2e8f0">Fase 7</span>
         <span style="font-size:0.75rem;background:#276749;color:#68d391;padding:2px 10px;border-radius:20px">Mar/2026 · atual</span>
+      </div>
+      <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;font-size:0.88rem;color:#a0aec0;line-height:1.6">
+        <li>🧭 Parser Itaú agora roteia por perfil interno para separar faturas domésticas clássicas, multi-cartão e internacionais</li>
+        <li>🌍 Novo suporte a fatura Itaú internacional/Black com leitura dedicada da seção <code>Lançamentos internacionais</code></li>
+        <li>💱 O parser internacional usa o valor final em reais e ignora corretamente IOF, subtotais e blocos financeiros laterais</li>
+        <li>🏷️ Detecção ampliada de perfil Itaú com suporte a âncoras como <code>MASTERCARD</code>, <code>BLACK</code>, <code>USD</code> e <code>Dólar de Conversão</code></li>
+        <li>🧪 Validação com PDFs reais para confirmar o roteamento dos novos layouts Itaú adicionados na pasta de testes</li>
+      </ul>
+    </div>
+
+    <div style="background:#1a202c;border:1px solid #2d3748;border-radius:12px;padding:20px 24px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="font-size:1.1rem;font-weight:700;color:#e2e8f0">Fase 6 — v3</span>
+        <span style="font-size:0.75rem;background:#2d3748;color:#a0aec0;padding:2px 10px;border-radius:20px">Mar/2026</span>
       </div>
       <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;font-size:0.88rem;color:#a0aec0;line-height:1.6">
         <li>🏷️ Novo eixo de canal/origem: filtros e badges para PIX, Transferência, Cartão, Boleto e Débito nas abas Lançamentos e Extrato</li>

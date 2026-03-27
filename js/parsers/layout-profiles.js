@@ -31,7 +31,7 @@ export const PDF_LAYOUT_PROFILES = [
   },
   {
     id: 'itau-fatura',
-    label: 'Fatura Itaú/Visa',
+    label: 'Fatura Itaú',
     badgeClass: 'badge-yellow',
     phaseLabel: 'Fatura cartão',
     importer: importarItauFatura,
@@ -40,6 +40,8 @@ export const PDF_LAYOUT_PROFILES = [
       textSample.includes('ITAU') ||
       textSample.includes('ITAU CARTOES') ||
       textSample.includes('VISA') ||
+      textSample.includes('MASTERCARD') ||
+      textSample.includes('BLACK') ||
       textSample.includes('SIGNATURE') ||
       textSample.includes('INFINITE'),
   },

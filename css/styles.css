@@ -92,6 +92,7 @@ tr:hover td { background: #2d3748; }
 .badge-green { background: #1c4532; color: #68d391; }
 .badge-blue { background: #1a365d; color: #63b3ed; }
 .badge-yellow { background: #3d3206; color: #f6e05e; }
+.badge-orange { background: #3d2106; color: #f6ad55; }
 .badge-red { background: #4a1515; color: #fc8181; }
 .badge-purple { background: #2d1f4f; color: #b794f4; }
 .badge-gray { background: #2d3748; color: #a0aec0; }
@@ -270,6 +271,9 @@ tr:hover td { background: #2d3748; }
 .assinatura-suggestion-card {
   background: linear-gradient(180deg, rgba(79, 209, 197, 0.06) 0%, #1a202c 100%);
 }
+.registrato-suggestion-card {
+  background: linear-gradient(180deg, rgba(99, 179, 237, 0.06) 0%, #1a202c 100%);
+}
 .assinatura-suggestion-evidence {
   display: flex;
   flex-direction: column;
@@ -289,6 +293,48 @@ tr:hover td { background: #2d3748; }
 .assinatura-suggestion-actions .btn-inline-secondary,
 .assinatura-suggestion-actions .btn-inline-danger {
   flex: 1 1 180px;
+}
+.registrato-mini-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.registrato-mini-item {
+  background: #111827;
+  border: 1px solid #2d3748;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.registrato-mini-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.registrato-mini-label {
+  color: #e2e8f0;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.registrato-mini-bar {
+  height: 7px;
+  background: #2d3748;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.registrato-mini-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+.registrato-mini-meta {
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: #718096;
+  font-size: 0.76rem;
 }
 .renewal-badge-urgent,
 .renewal-badge-soon {

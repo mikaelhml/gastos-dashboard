@@ -33,6 +33,7 @@
   <button type="button" id="tab-button-lancamentos" class="tab" role="tab" aria-selected="false" aria-controls="tab-lancamentos" onclick="switchTab(event, 'lancamentos')">🧾 Lançamentos</button>
   <button type="button" id="tab-button-extrato" class="tab" role="tab" aria-selected="false" aria-controls="tab-extrato" onclick="switchTab(event, 'extrato')">🏦 Extrato Conta</button>
   <button type="button" id="tab-button-projecao" class="tab" role="tab" aria-selected="false" aria-controls="tab-projecao" onclick="switchTab(event, 'projecao')">🔮 Projeção</button>
+  <button type="button" id="tab-button-registrato" class="tab" role="tab" aria-selected="false" aria-controls="tab-registrato" onclick="switchTab(event, 'registrato')">🏛️ Registrato</button>
   <button type="button" id="tab-button-importar" class="tab" role="tab" aria-selected="false" aria-controls="tab-importar" onclick="switchTab(event, 'importar')">📥 Importar</button>
   <button type="button" id="tab-button-changelog" class="tab" role="tab" aria-selected="false" aria-controls="tab-changelog" onclick="switchTab(event, 'changelog')">📋 Novidades</button>
 </div>
@@ -250,6 +251,16 @@
       </div>
     </form>
     <div id="despesaFormFeedback" class="inline-form-feedback"></div>
+  </div>
+  <div class="helper-panel">
+    <div class="helper-panel-header">
+      <div>
+        <h3>🏛️ Sugestões do Registrato e recorrência</h3>
+        <p>Motor inicial da Fase 2: cruza SCR com transações recorrentes e sinaliza candidatos a despesa fixa, parcelamento ou financiamento.</p>
+      </div>
+    </div>
+    <div id="registratoSuggestions"></div>
+    <div id="registratoSuggestionsFeedback" class="inline-form-feedback"></div>
   </div>
   <div class="section-title">📋 Despesas Fixas Mensais</div>
   <div class="table-wrap">
@@ -640,17 +651,30 @@
   <div id="projecaoAlerta" style="margin-top:16px"></div>
 </div>
 
+<!-- ── REGISTRATO ───────────────────────────────────────────────────────────── -->
+<div id="tab-registrato" class="tab-content" role="tabpanel" aria-labelledby="tab-button-registrato">
+  <div class="section-title">🏛️ Registrato / SCR</div>
+  <div style="background:linear-gradient(135deg,#13243a,#1a202c);border:1px solid #2b6cb0;border-radius:12px;padding:14px 18px;margin-bottom:24px;font-size:0.88rem;">
+    <div style="color:#63b3ed;font-weight:700;margin-bottom:8px">Contexto de crédito e endividamento</div>
+    <div style="color:#a0aec0;line-height:1.7">
+      Esta aba mostra o histórico importado do SCR em camada separada do extrato e da fatura. As ações continuam indo para
+      <strong style="color:#e2e8f0">Despesas & Parcelas</strong> somente quando você aprova uma sugestão.
+    </div>
+  </div>
+  <div id="registratoRoot"></div>
+</div>
+
 <!-- ── IMPORTAR ────────────────────────────────────────────────────────────── -->
 <div id="tab-importar" class="tab-content" role="tabpanel" aria-labelledby="tab-button-importar">
-  <div class="section-title">📥 Importar PDFs Bancários</div>
+  <div class="section-title">📥 Importar PDFs Financeiros</div>
 
   <!-- Zona de drag & drop -->
-  <div class="import-zone" id="dropZone" tabindex="0" role="button" aria-label="Selecionar ou arrastar PDFs bancários" aria-describedby="importZoneHelp">
+  <div class="import-zone" id="dropZone" tabindex="0" role="button" aria-label="Selecionar ou arrastar PDFs financeiros" aria-describedby="importZoneHelp">
     <div style="font-size:2.8rem;margin-bottom:14px;pointer-events:none">📂</div>
-    <h3 style="pointer-events:none">Arrastar PDF bancário</h3>
+    <h3 style="pointer-events:none">Arrastar PDF financeiro</h3>
     <p id="importZoneHelp" style="font-size:0.88rem;color:#718096;margin-top:8px;pointer-events:none">
       Arraste e solte o arquivo PDF aqui, ou clique para selecionar.<br>
-      <span style="font-size:0.8rem;color:#4a5568">Detecção automática por nome do arquivo, layout e estrutura do PDF</span>
+      <span style="font-size:0.8rem;color:#4a5568">Suporta extratos, faturas e o Relatório Registrato/SCR por detecção automática do layout</span>
     </p>
     <input type="file" id="pdfFileInput" accept=".pdf" multiple style="display:none">
     <button type="button" id="dropZoneButton" class="btn-primary" style="margin-top:16px">
@@ -730,6 +754,7 @@
         <li>💡 Aba <code>Assinaturas</code> agora sugere conversão automática quando o mesmo lançamento aparece em <strong>2 meses ou mais</strong> com o mesmo valor</li>
         <li>⚡ Cada sugestão pode ser resolvida com ação rápida <code>Sim</code> ou <code>Não mostrar</code>, sem depender do modal da aba <code>Lançamentos</code></li>
         <li>🧠 Sugestões recusadas ou já aceitas deixam de reaparecer automaticamente graças à persistência local no IndexedDB</li>
+        <li>🏛️ Nova aba <code>Registrato</code> consolida histórico mensal, instituições detectadas, fila de sugestões e operações detalhadas do SCR</li>
         <li>🧹 Aba <code>Importar</code> ganhou um novo botão para limpar a base completa, mantendo o botão antigo de limpar apenas os dados importados</li>
         <li>📊 Cards do topo da <code>Visão Geral</code> voltaram a ser preenchidos corretamente, incluindo totais mensais, projeção anual e saldo devedor</li>
       </ul>

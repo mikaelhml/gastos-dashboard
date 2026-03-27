@@ -15,13 +15,13 @@ const CAT_PALETTE = [
 /**
  * Renderiza a aba Visão Geral.
  */
-export function buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, transacoes, lancamentos = []) {
+export function buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, transacoes, lancamentos = [], registratoInsights = null) {
   const totals      = calcTotals(assinaturas, despesasFixas);
   const summaryReal = extratoSummary.filter(m => !m.apenasHistorico);
 
   buildTopSummaryCards(totals, despesasFixas, lancamentos);
   buildCharts(assinaturas, despesasFixas);
-  buildNewKpiCards(summaryReal, lancamentos);
+  buildNewKpiCards(summaryReal, lancamentos, registratoInsights);
   buildRenovacaoAlerta(assinaturas);
 
   if (summaryReal.length > 0) {
@@ -47,7 +47,7 @@ export function buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, tran
 
 // ── KPIs extras ──────────────────────────────────────────────────────────────
 
-function buildNewKpiCards(summaryReal, lancamentos) {
+function buildNewKpiCards(summaryReal, lancamentos, registratoInsights) {
   const ultimo = summaryReal[summaryReal.length - 1];
   const saldo  = ultimo?.saldoFinal ?? null;
 
@@ -72,6 +72,12 @@ function buildNewKpiCards(summaryReal, lancamentos) {
     const urgColor = naoClass > 10 ? '#fc8181' : naoClass > 5 ? '#f6ad55' : '#68d391';
     naoClassEl.style.color = urgColor;
     if (cardNaoClass) cardNaoClass.style.setProperty('--accent', urgColor);
+  }
+
+  const totalSaldoEl = document.getElementById('totalSaldoDevedor');
+  const totalSaldoSubEl = document.getElementById('totalSaldoSub');
+  if (registratoInsights && totalSaldoEl && totalSaldoSubEl) {
+    totalSaldoSubEl.textContent = `Parcelas em aberto + SCR: ${fmt(registratoInsights.exposicaoTotal)} · ${registratoInsights.sugestoesPendentes} sugestão(ões)`;
   }
 }
 

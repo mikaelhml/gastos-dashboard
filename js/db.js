@@ -1,6 +1,6 @@
 /**
  * db.js — Wrapper assíncrono para IndexedDB
- * Base de dados: "gastos_db_public" versão 1
+ * Base de dados: "gastos_db_public"
  *
  * Stores:
  *   assinaturas       keyPath: id (auto)
@@ -13,7 +13,7 @@
  */
 
 const DB_NAME    = 'gastos_db_public';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 const STORE_DEFS = [
   { name: 'assinaturas',          keyPath: 'id',   autoIncrement: true  },
@@ -25,6 +25,9 @@ const STORE_DEFS = [
   { name: 'pdfs_importados',      keyPath: 'hash', autoIncrement: false },
   { name: 'orcamentos',           keyPath: 'cat',  autoIncrement: false },
   { name: 'assinatura_sugestoes_dispensa', keyPath: 'key', autoIncrement: false },
+  { name: 'registrato_sugestoes_dispensa', keyPath: 'key', autoIncrement: false },
+  { name: 'registrato_scr_snapshot', keyPath: 'id', autoIncrement: false },
+  { name: 'registrato_scr_resumo_mensal', keyPath: 'mesRef', autoIncrement: false },
 ];
 
 let _db = null;
@@ -153,6 +156,9 @@ export async function clearAllImported() {
   await clearStore('lancamentos');
   await clearStore('pdfs_importados');
   await clearStore('assinatura_sugestoes_dispensa');
+  await clearStore('registrato_sugestoes_dispensa');
+  await clearStore('registrato_scr_snapshot');
+  await clearStore('registrato_scr_resumo_mensal');
 }
 
 export async function clearAllData() {
@@ -165,17 +171,21 @@ export async function clearAllData() {
   await clearStore('observacoes');
   await clearStore('orcamentos');
   await clearStore('assinatura_sugestoes_dispensa');
+  await clearStore('registrato_sugestoes_dispensa');
+  await clearStore('registrato_scr_snapshot');
+  await clearStore('registrato_scr_resumo_mensal');
 }
 
 // ── Contagens para status ─────────────────────────────────────────────────────
 
 export async function getStoreCounts() {
-  const [assinaturas, despesas, lancamentos, transacoes, pdfs, orcamentos] = await Promise.all([
+  const [assinaturas, despesas, lancamentos, transacoes, pdfs, registratoMeses] = await Promise.all([
     count('assinaturas'),
     count('despesas_fixas'),
     count('lancamentos'),
     count('extrato_transacoes'),
     count('pdfs_importados'),
+    count('registrato_scr_resumo_mensal'),
   ]);
-  return { assinaturas, despesas, lancamentos, transacoes, pdfs, orcamentos };
+  return { assinaturas, despesas, lancamentos, transacoes, pdfs, registratoMeses };
 }

@@ -10,6 +10,7 @@ let _fixoMensal = { itens: {}, total: 0 };
 let _historico  = [];
 let _saldoAtual = 0;
 let _ultimoMes  = 'Fev/2026';
+let _registratoInsights = null;
 
 function parseNumberInput(id, fallback = 0) {
   const value = parseFloat(document.getElementById(id)?.value ?? '');
@@ -43,9 +44,10 @@ function computeHistorico(extratoSummary) {
  * @param {Array} despesasFixas
  * @param {Array} extratoSummary  (inclui Nov/2025 apenasHistorico)
  */
-export function initProjecao(despesasFixas, extratoSummary) {
+export function initProjecao(despesasFixas, extratoSummary, registratoInsights = null) {
   _fixoMensal = computeFixoMensal(despesasFixas);
   _historico  = computeHistorico(extratoSummary);
+  _registratoInsights = registratoInsights;
 
   // Último mês com dados reais (exclui apenasHistorico)
   const summaryReal = extratoSummary.filter(m => !m.apenasHistorico);
@@ -112,7 +114,10 @@ export function recalcularProjecao() {
   const resultMes = salario + rendaExtra - _fixoMensal.total - itau - outros;
 
   const el = document.getElementById('pResultadoMensal');
-  el.innerHTML = `Resultado mensal estimado: <strong style="color:${resultMes >= 0 ? '#68d391' : '#fc8181'}">${resultMes >= 0 ? '+' : ''}${fmt(resultMes)}</strong>`;
+  const complementoScr = _registratoInsights?.financiamentoMensalSugerido
+    ? ` <span style="color:#90cdf4">· SCR sugere até ${fmt(_registratoInsights.financiamentoMensalSugerido)}/mês em compromissos financeiros</span>`
+    : '';
+  el.innerHTML = `Resultado mensal estimado: <strong style="color:${resultMes >= 0 ? '#68d391' : '#fc8181'}">${resultMes >= 0 ? '+' : ''}${fmt(resultMes)}</strong>${complementoScr}`;
 
   renderProjecaoTable(rows);
   updateProjecaoCharts(rows, itau, outros);
@@ -260,6 +265,15 @@ function renderAlerta(rows, resultMes) {
     el.innerHTML = `
       <div style="background:#1c4532;border:1px solid #68d391;border-radius:10px;padding:14px 18px;font-size:0.9rem;color:#68d391">
         ✅ <strong>Saldo estável:</strong> Com resultado de <strong>+${fmt(resultMes)}/mês</strong>, o saldo tende a crescer nos próximos meses.
+      </div>`;
+  }
+
+  if (_registratoInsights?.latest) {
+    el.innerHTML += `
+      <div style="margin-top:12px;background:#1a2e4a;border:1px solid #2c5282;border-radius:10px;padding:14px 18px;font-size:0.88rem;color:#90cdf4">
+        🏛️ <strong>Contexto do SCR (${_registratoInsights.latest.mesLabel || _registratoInsights.latest.mesRef}):</strong>
+        exposição ${fmt(_registratoInsights.exposicaoTotal)} · vencida ${fmt(_registratoInsights.dividaVencida)} · limite ${fmt(_registratoInsights.limiteCredito)}.
+        Este bloco é apenas informativo e ainda não entra automaticamente no cálculo da projeção.
       </div>`;
   }
 }

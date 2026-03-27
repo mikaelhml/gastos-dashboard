@@ -70,6 +70,11 @@ async function refreshStatus() {
       <div class="ds-label">PDFs</div>
       <div class="ds-count">${counts.pdfs}</div>
       <div class="ds-sub">Arquivos importados</div>
+    </div>
+    <div class="db-status-card">
+      <div class="ds-label">Registrato</div>
+      <div class="ds-count">${counts.registratoMeses}</div>
+      <div class="ds-sub">Meses SCR</div>
     </div>`;
 }
 
@@ -265,16 +270,7 @@ async function _importarUmArquivo(file) {
     setProgress(5, `Calculando hash (${tipoLabel})…`);
 
     const resultado = await profile.importer(file, pct => {
-      const msgs = {
-        5:   `Calculando hash (${tipoLabel})…`,
-        10:  'Verificando duplicatas…',
-        20:  tipo === 'nubank-conta' ? 'Extraindo período do arquivo…' : 'Identificando cabeçalho do layout…',
-        30:  'Carregando PDF.js…',
-        65:  'Processando estrutura do PDF…',
-        75:  tipo === 'nubank-conta' ? 'Parseando transações…' : 'Parseando lançamentos…',
-        85:  'Salvando no banco local…',
-        100: 'Concluído!',
-      };
+      const msgs = getProgressMessages(tipo, tipoLabel);
       setProgress(pct, msgs[pct] || `Processando… ${pct}%`);
     });
 
@@ -305,6 +301,32 @@ async function _importarUmArquivo(file) {
     console.error('[importar]', err);
     return false;
   }
+}
+
+function getProgressMessages(tipo, tipoLabel) {
+  if (tipo === 'registrato-scr') {
+    return {
+      5: `Calculando hash (${tipoLabel})…`,
+      10: 'Verificando duplicatas…',
+      20: 'Lendo cabecalho do Registrato…',
+      30: 'Carregando PDF.js…',
+      55: 'Separando blocos mensais do SCR…',
+      75: 'Persistindo snapshots do Registrato…',
+      85: 'Registrando arquivo importado…',
+      100: 'Concluído!',
+    };
+  }
+
+  return {
+    5: `Calculando hash (${tipoLabel})…`,
+    10: 'Verificando duplicatas…',
+    20: tipo === 'nubank-conta' ? 'Extraindo período do arquivo…' : 'Identificando cabeçalho do layout…',
+    30: 'Carregando PDF.js…',
+    65: 'Processando estrutura do PDF…',
+    75: tipo === 'nubank-conta' ? 'Parseando transações…' : 'Parseando lançamentos…',
+    85: 'Salvando no banco local…',
+    100: 'Concluído!',
+  };
 }
 
 // ── Limpar base ───────────────────────────────────────────────────────────────

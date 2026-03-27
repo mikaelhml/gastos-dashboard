@@ -4,9 +4,9 @@ Dashboard web offline-first para controle financeiro pessoal, com persistencia l
 
 ## Status atual do projeto
 
-- **Fases 3, 4 e 5:** concluidas
+- **Fase 8:** operacionalizacao inicial do Registrato / SCR concluida
 - **Versao publica:** limpa, sem seeds pessoais
-- **Fase atual:** estabilizacao de parser + refinamento de UX
+- **Fase atual:** consolidacao visual do Registrato + validacao final
 - **Hospedagem alvo:** GitHub Pages
 
 Hoje o projeto ja entrega:
@@ -15,6 +15,11 @@ Hoje o projeto ja entrega:
 - conversao manual de lancamentos para assinatura, despesa fixa, parcelamento ou financiamento
 - importacao de configuracao JSON
 - importacao de PDFs por perfil de layout
+- importacao inicial de Relatorio Registrato / SCR
+- sugestoes do Registrato com fluxo de `aceitar / dispensar`
+- inferencia inicial de parcelas e data de inicio para compromissos financeiros
+- KPIs resumidos do SCR na visao geral
+- bloco informativo do SCR na projecao
 - suporte a senha de PDF com reutilizacao automatica na sessao
 
 ## O que esta estavel
@@ -30,15 +35,16 @@ Hoje o projeto ja entrega:
 
 - parser de faturas Itaú/Visa em variantes de layout, especialmente `Uniclass/Signature`
 - heuristicas para OCR ruim e linhas quebradas em PDFs de fatura
-- refinos de UX em fluxos manuais de classificacao
+- calibracao final das heuristicas do Registrato
+- superficie visual dedicada para historico e distribuicao do SCR
 
 ## Proximos passos
 
-1. estabilizar de vez o parser de faturas Itaú/Visa, principalmente os PDFs que ainda retornam `0 lançamentos`
-2. separar melhor perfis/layouts de fatura Itaú comum vs Itaú Uniclass/Signature
-3. ampliar diagnostico para novos layouts de PDF quando necessario
-4. revisar UX da modal de conversao e reduzir atrito nas classificacoes manuais
-5. depois da estabilizacao dos parsers, fazer validacao final para deploy publico
+1. criar uma view dedicada do Registrato com historico mensal, distribuicao e detalhamento por instituicao
+2. validar o fluxo completo do SCR com o PDF real no navegador e recalibrar falsos positivos
+3. estabilizar de vez o parser de faturas Itaú/Visa, principalmente os PDFs que ainda retornam `0 lançamentos`
+4. separar melhor perfis/layouts de fatura Itaú comum vs Itaú Uniclass/Signature
+5. ampliar diagnostico para novos layouts de PDF quando necessario
 
 ## Fluxo recomendado de uso
 
@@ -57,11 +63,13 @@ Hoje o projeto ja entrega:
 - `nubank-conta` — extrato da conta Nubank
 - `nubank-fatura` — fatura Nubank
 - `itau-fatura` — fatura Itaú/Visa
+- `registrato-scr` — Relatorio de Emprestimos e Financiamentos (Registrato / SCR)
 
 Observacao importante:
 
 - o parser Itaú/Visa existe e esta funcional em varios casos, mas ainda nao cobre todos os layouts reais
 - PDFs com senha reutilizam a mesma senha automaticamente enquanto a sessao estiver aberta
+- o Registrato/SCR entra como camada propria, com sugestoes e contexto visual, sem contaminar extrato nem fatura
 
 ## Rodar localmente
 
@@ -147,6 +155,9 @@ gastos-dashboard/
 - `js/views/lancamentos.js`
   - converte lancamentos em estruturas manuais do dashboard
 
+- `js/utils/registrato-suggestions.js`
+  - consolida heuristicas, sugestoes, aceite/dispensa e insights do SCR
+
 ## Regras importantes
 
 - nao trocar a stack
@@ -183,10 +194,11 @@ Nenhum dado e enviado para servidor. Tudo fica no navegador do usuario via `Inde
 
 Se eu voltar a este projeto depois:
 
-- o foco nao e mais infraestrutura
-- o foco principal agora e **parser de fatura Itaú/Visa**, especialmente variante `Uniclass/Signature`
+- o foco nao e mais a importacao basica do Registrato
+- o foco principal agora e fechar a **view dedicada do SCR** e validar o fluxo real ponta a ponta
+- o parser Itaú/Visa continua sendo o outro ponto critico, especialmente variante `Uniclass/Signature`
 - a UI principal e a base publica ja estao boas
 - qualquer nova rodada deve priorizar:
-  1. ler logs do parser Itaú
-  2. comparar com prints/PDF real
-  3. evoluir `layout-profiles.js`, `pdf-utils.js` e `itau-fatura.js`
+  1. validar o Registrato real no navegador
+  2. criar a superficie dedicada do SCR
+  3. depois retomar logs e refinamento do parser Itaú

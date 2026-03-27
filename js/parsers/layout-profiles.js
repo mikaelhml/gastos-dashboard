@@ -3,6 +3,7 @@ import { importarNubankConta } from './nubank-conta.js';
 import { importarNubankFatura } from './nubank-fatura.js';
 import { importarItauFatura, pareceFaturaItauPorNome } from './itau-fatura.js';
 import { importarItauConta } from './itau-conta.js';
+import { importarRegistratoScr } from './registrato-scr.js';
 
 const CONTA_FILE_RE = /^NU_\d+_\d{2}[A-Z]{3}\d{4}_\d{2}[A-Z]{3}\d{4}\.PDF$/i;
 
@@ -44,6 +45,17 @@ export const PDF_LAYOUT_PROFILES = [
       textSample.includes('BLACK') ||
       textSample.includes('SIGNATURE') ||
       textSample.includes('INFINITE'),
+  },
+  {
+    id: 'registrato-scr',
+    label: 'Registrato SCR',
+    badgeClass: 'badge-orange',
+    phaseLabel: 'Crédito consolidado',
+    importer: importarRegistratoScr,
+    matchFileName: fileName => /(^SCR-|REGISTRATO|EMPRESTIMOS|FINANCIAMENTOS)/i.test(String(fileName ?? '')),
+    matchContent: ({ textSample }) =>
+      textSample.includes('RELATORIO DE EMPRESTIMOS E FINANCIAMENTOS (SCR)') &&
+      textSample.includes('PERIODO PESQUISADO'),
   },
   {
     id: 'nubank-fatura',

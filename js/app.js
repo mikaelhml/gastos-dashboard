@@ -19,7 +19,9 @@ import { buildParcelamentos }           from './views/parcelamentos.js';
 import { initLancamentos, filterLancamentos, clearLancamentosFilters } from './views/lancamentos.js';
 import { initExtrato, filterExtrato, clearExtratoFilters }   from './views/extrato.js';
 import { initProjecao, recalcularProjecao } from './views/projecao.js';
+import { buildRegistrato }               from './views/registrato.js';
 import { buildImportar, clearBase, clearAllDashboardData }     from './views/importar.js';
+import { buildRegistratoSuggestions, computeRegistratoInsights }   from './utils/registrato-suggestions.js';
 
 let _refreshChain = Promise.resolve();
 
@@ -60,6 +62,9 @@ async function loadDashboardData() {
     extratoSummary,
     orcamentos,
     assinaturaSugestoesDispensa,
+    registratoSnapshots,
+    registratoResumos,
+    registratoSugestoesDispensa,
   ] = await Promise.all([
     getAll('assinaturas'),
     getAll('observacoes'),
@@ -69,6 +74,9 @@ async function loadDashboardData() {
     getAll('extrato_summary'),
     getAll('orcamentos'),
     getAll('assinatura_sugestoes_dispensa'),
+    getAll('registrato_scr_snapshot'),
+    getAll('registrato_scr_resumo_mensal'),
+    getAll('registrato_sugestoes_dispensa'),
   ]);
 
   extratoSummary.sort((a, b) => {
@@ -88,6 +96,9 @@ async function loadDashboardData() {
     extratoSummary,
     orcamentos,
     assinaturaSugestoesDispensa,
+    registratoSnapshots,
+    registratoResumos,
+    registratoSugestoesDispensa,
   };
 }
 
@@ -126,15 +137,30 @@ async function renderDashboard() {
     extratoSummary,
     orcamentos,
     assinaturaSugestoesDispensa,
+    registratoSnapshots,
+    registratoResumos,
+    registratoSugestoesDispensa,
   } = await loadDashboardData();
 
-  buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, extratoTransacoes, lancamentos);
+  const registratoSuggestions = buildRegistratoSuggestions({
+    despesasFixas,
+    assinaturas,
+    lancamentos,
+    extratoTransacoes,
+    registratoSnapshots,
+    registratoResumos,
+    dismissals: registratoSugestoesDispensa,
+  });
+  const registratoInsights = computeRegistratoInsights(registratoResumos, registratoSuggestions);
+
+  buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, extratoTransacoes, lancamentos, registratoInsights);
   buildAssinaturas(assinaturas, observacoes, lancamentos, extratoTransacoes, assinaturaSugestoesDispensa);
-  buildDespesasFixas(despesasFixas);
+  buildDespesasFixas(despesasFixas, registratoSuggestions);
   buildParcelamentos(despesasFixas, lancamentos);
   initLancamentos(lancamentos, extratoTransacoes, assinaturas, despesasFixas);
   initExtrato(extratoTransacoes, extratoSummary);
-  initProjecao(despesasFixas, extratoSummary);
+  initProjecao(despesasFixas, extratoSummary, registratoInsights);
+  buildRegistrato(registratoResumos, registratoSnapshots, registratoSuggestions, registratoInsights);
   await buildImportar();
 }
 

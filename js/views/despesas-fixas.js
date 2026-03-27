@@ -1,16 +1,19 @@
 import { fmt, calcEndDate } from '../utils/formatters.js';
 import { addItem, deleteItem } from '../db.js';
 import { escapeHtml } from '../utils/dom.js';
+import { acceptRegistratoSuggestion, dismissRegistratoSuggestion } from '../utils/registrato-suggestions.js';
 
 /**
  * Renderiza a aba Despesas Fixas.
  * @param {Array} despesasFixas
+ * @param {Array} registratoSuggestions
  */
-export function buildDespesasFixas(despesasFixas) {
+export function buildDespesasFixas(despesasFixas, registratoSuggestions = []) {
   const total = despesasFixas.reduce((s, d) => s + d.valor, 0);
 
   document.getElementById('fixedTotalBar').textContent = fmt(total);
   document.getElementById('fixedAnualBar').textContent = fmt(total * 12);
+  renderRegistratoSuggestions(registratoSuggestions);
 
   const tbody = document.getElementById('fixedTable');
   tbody.innerHTML = '';
@@ -91,6 +94,115 @@ export function buildDespesasFixas(despesasFixas) {
 
   bindDespesaForm();
   bindRemoveButtons();
+}
+
+function renderRegistratoSuggestions(suggestions) {
+  const container = document.getElementById('registratoSuggestions');
+  if (!container) return;
+
+  if (!suggestions.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <strong>Nenhuma sugestão encontrada ainda</strong>
+        Quando houver cruzamento confiável entre Registrato e recorrência nas transações, os candidatos vão aparecer aqui.
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="sub-grid">
+      ${suggestions.map(item => {
+        const accent = getSuggestionAccent(item.tipo, item.confianca);
+        const tipoLabel = getTipoLabel(item.tipo);
+        const confLabel = item.confianca ? item.confianca.toUpperCase() : 'BAIXA';
+        const hintParcela = item.hintParcelas
+          ? `<span class="badge badge-yellow">${escapeHtml(item.hintParcelas.label)} · início ${escapeHtml(item.hintParcelas.inicio || 'n/d')}</span>`
+          : '';
+        const meses = item.meses.slice(-4).map(mes => `<span class="badge badge-gray">${escapeHtml(mes)}</span>`).join('');
+        return `
+          <div class="sub-card registrato-suggestion-card" style="--sub-accent:${accent}">
+            <div class="sub-card-top">
+              <div class="sub-icon">${item.tipo === 'financiamento' ? '🏦' : item.tipo === 'parcelamento' ? '📦' : '📋'}</div>
+              <div class="sub-info">
+                <div class="sub-name">${escapeHtml(item.nome)}</div>
+                <div class="sub-cat">
+                  <span class="badge badge-blue" style="font-size:0.7rem">${escapeHtml(item.cat)}</span>
+                  <span class="badge ${getConfidenceBadge(item.confianca)}" style="font-size:0.7rem;margin-left:6px">${escapeHtml(confLabel)}</span>
+                </div>
+              </div>
+            </div>
+            <div class="sub-card-bottom">
+              <div>
+                <div class="sub-value">${fmt(item.valor)}<span style="font-size:0.78rem;font-weight:400;color:#718096">/mês</span></div>
+                <div class="sub-anual">${escapeHtml(tipoLabel)} · ${escapeHtml(item.origem || 'Motor de sugestões')}</div>
+              </div>
+            </div>
+            <div class="assinatura-suggestion-evidence">
+              <div class="assinatura-suggestion-label">Justificativa</div>
+              <div style="font-size:0.85rem;color:#cbd5e0;line-height:1.5">${escapeHtml(item.justificativa || '')}</div>
+              ${item.observacaoRisco ? `<div style="font-size:0.8rem;color:#f6ad55;line-height:1.5">${escapeHtml(item.observacaoRisco)}</div>` : ''}
+              <div class="helper-badges">
+                ${item.institutionLabel ? `<span class="badge badge-purple">${escapeHtml(item.institutionLabel)}</span>` : ''}
+                ${hintParcela}
+                ${meses}
+              </div>
+            </div>
+            <div class="assinatura-suggestion-actions">
+              <button type="button" class="btn-inline-secondary" data-registrato-action="accept" data-registrato-key="${escapeHtml(item.key)}">
+                Aceitar
+              </button>
+              <button type="button" class="btn-inline-danger" data-registrato-action="dismiss" data-registrato-key="${escapeHtml(item.key)}">
+                Dispensar
+              </button>
+            </div>
+          </div>`;
+      }).join('')}
+    </div>`;
+
+  bindRegistratoSuggestionButtons(suggestions);
+}
+
+function getSuggestionAccent(tipo, confianca) {
+  if (tipo === 'financiamento') return confianca === 'alta' ? '#63b3ed' : '#90cdf4';
+  if (tipo === 'parcelamento') return confianca === 'alta' ? '#f6ad55' : '#fbd38d';
+  return confianca === 'alta' ? '#68d391' : '#9ae6b4';
+}
+
+function getTipoLabel(tipo) {
+  if (tipo === 'financiamento') return 'Financiamento sugerido';
+  if (tipo === 'parcelamento') return 'Parcelamento sugerido';
+  return 'Despesa fixa sugerida';
+}
+
+function getConfidenceBadge(confianca) {
+  if (confianca === 'alta') return 'badge-green';
+  if (confianca === 'media') return 'badge-yellow';
+  return 'badge-gray';
+}
+
+function bindRegistratoSuggestionButtons(suggestions) {
+  const byKey = new Map(suggestions.map(item => [item.key, item]));
+  document.querySelectorAll('[data-registrato-action]').forEach(button => {
+    button.onclick = async () => {
+      const action = button.getAttribute('data-registrato-action');
+      const key = button.getAttribute('data-registrato-key');
+      const suggestion = byKey.get(key);
+      if (!suggestion) return;
+
+      try {
+        if (action === 'accept') {
+          await acceptRegistratoSuggestion(suggestion);
+          setFeedback('registratoSuggestionsFeedback', `Sugestão "${suggestion.nome}" aceita e convertida em despesa fixa.`, 'success');
+        } else {
+          await dismissRegistratoSuggestion(suggestion);
+          setFeedback('registratoSuggestionsFeedback', `Sugestão "${suggestion.nome}" dispensada.`, 'success');
+        }
+        await window.refreshDashboard?.();
+      } catch (error) {
+        setFeedback('registratoSuggestionsFeedback', error instanceof Error ? error.message : 'Falha ao processar sugestão do Registrato.', 'error');
+      }
+    };
+  });
 }
 
 function bindDespesaForm() {

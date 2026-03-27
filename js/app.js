@@ -90,7 +90,9 @@ async function loadDashboardData() {
     return mesesNomes.indexOf(mA) - mesesNomes.indexOf(mB);
   });
 
-  const lancamentosNormalizados = lancamentos.map(normalizeLancamentoCartao);
+  const lancamentosNormalizados = lancamentos
+    .map(normalizeLancamentoCartao)
+    .filter(Boolean);
 
   const registratoResumosNormalizados = registratoResumos.filter(normalizeRegistratoEntry);
   const registratoSnapshotsNormalizados = registratoSnapshots.filter(normalizeRegistratoEntry);
@@ -137,7 +139,9 @@ function normalizeDespesaFixa(item) {
 
 function normalizeLancamentoCartao(item) {
   const desc = String(item?.desc ?? '').trim();
-  if (!desc || item?.parcela) return item;
+  if (!desc) return item;
+  if (isResumoNaoTransacionalCartao(desc)) return null;
+  if (item?.parcela) return item;
 
   const parcelaInfo = extrairParcelaFinal(desc);
   if (!parcelaInfo || !parcelaInfo.desc) return item;
@@ -148,6 +152,21 @@ function normalizeLancamentoCartao(item) {
     parcela: parcelaInfo.parcela,
     totalCompra: item?.totalCompra ?? null,
   };
+}
+
+function isResumoNaoTransacionalCartao(desc) {
+  const normalized = String(desc ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+  const moneyCount = [...String(desc ?? '').matchAll(/[\d.]{1,10},\d{2}/g)].length;
+
+  return moneyCount >= 2 && (
+    normalized.includes('PROXIMAS FATURAS') ||
+    normalized.includes('PROXIMA FATURA') ||
+    normalized.includes('XIMAS FATURAS') ||
+    normalized.includes('COMPRAS PARCELADAS')
+  );
 }
 
 function normalizeRegistratoEntry(item) {

@@ -280,7 +280,7 @@ export function sortLancamentosBy(key) {
   if (!key) return;
   _sortState = _sortState.key === key
     ? { key, direction: _sortState.direction === 'asc' ? 'desc' : 'asc' }
-    : { key, direction: key === 'data' ? 'desc' : 'asc' };
+    : { key, direction: (key === 'data' || key === 'valor') ? 'desc' : 'asc' };
   filterLancamentos();
 }
 
@@ -302,7 +302,7 @@ function compareLancamentoValues(a, b, key) {
   if (key === 'fatura') return compareText(a?.fatura, b?.fatura);
   if (key === 'descricao') return compareText(a?.desc, b?.desc);
   if (key === 'categoria') return compareText(a?.cat, b?.cat);
-  if (key === 'valor') return Number(a?.valor || 0) - Number(b?.valor || 0);
+  if (key === 'valor') return getComparableDisplayValue(a) - getComparableDisplayValue(b);
   return 0;
 }
 
@@ -320,6 +320,18 @@ function updateSortButtons() {
     const label = button.getAttribute('data-sort-label') || button.textContent || '';
     button.innerHTML = `<span>${escapeHtml(label)}</span><span class="sort-indicator">${arrow}</span>`;
   });
+}
+
+function getComparableDisplayValue(item) {
+  if (item?.contextoDerivado) {
+    return item?.registratoResumo?.semRegistros ? 0 : Number(item?.valor || 0);
+  }
+
+  if (item?.source === 'conta' && item?.tipo === 'entrada') {
+    return Number(item?.valor || 0);
+  }
+
+  return -Math.abs(Number(item?.valor || 0));
 }
 
 function buildLancamentosContextPanel(cardBillSummaries, contextRows) {
@@ -451,7 +463,7 @@ function bindConvertDialog() {
       }
 
       close();
-      renderLancamentos(_lancamentos);
+      renderLancamentos(getSortedLancamentos(_lancamentos));
       await window.refreshDashboard?.();
     } catch (err) {
       console.error('[lancamentos] Erro ao converter:', err);
@@ -524,7 +536,7 @@ function bindEditDeleteButtons() {
       if (!confirm(`Excluir lançamento "${lancamento.desc}"?`)) return;
       await deleteItem(getStore(lancamento), prepareForDb(lancamento).id ?? lancamento._origId ?? lancamento.id);
       _lancamentos = _lancamentos.filter(l => String(l.id) !== String(rawId));
-      renderLancamentos(_lancamentos);
+      renderLancamentos(getSortedLancamentos(_lancamentos));
       window.refreshDashboard?.();
     };
   });
@@ -564,7 +576,7 @@ function bindEditDialog() {
     const idx = _lancamentos.findIndex(l => String(l.id) === String(rawId));
     if (idx !== -1) { _lancamentos[idx] = { ..._lancamentos[idx], tipo_classificado: null, classificado_nome: null }; }
     close();
-    renderLancamentos(_lancamentos);
+    renderLancamentos(getSortedLancamentos(_lancamentos));
     window.refreshDashboard?.();
   });
 
@@ -593,7 +605,7 @@ function bindEditDialog() {
     if (idx !== -1) { _lancamentos[idx] = { ..._lancamentos[idx], data, fatura, desc, cat, canal, valor, parcela }; }
 
     setFeedback('Salvo!', 'success', 'lancamentoEditFeedback');
-    setTimeout(() => { close(); renderLancamentos(_lancamentos); }, 700);
+    setTimeout(() => { close(); renderLancamentos(getSortedLancamentos(_lancamentos)); }, 700);
   });
 }
 

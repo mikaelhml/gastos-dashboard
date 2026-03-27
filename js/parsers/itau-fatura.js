@@ -894,7 +894,8 @@ function parseTransactionLine(text, mesFatura, sourceKey = '') {
     valor === 0 ||
     !desc ||
     desc.length < 2 ||
-    RE_DESC_INVALIDA.test(desc)
+    RE_DESC_INVALIDA.test(desc) ||
+    isNonTransactionalCardSummary(rawDesc, desc)
   ) {
     return null;
   }
@@ -1002,6 +1003,25 @@ function sanitizarDescricaoItau(rawDesc) {
   desc = desc.replace(/\s+[\d.]{1,10},\d{2}\s*$/g, '').trim();
 
   return desc;
+}
+
+function isNonTransactionalCardSummary(rawDesc, cleanedDesc = '') {
+  const rawNormalized = normalizeForMatch(rawDesc);
+  const cleanNormalized = normalizeForMatch(cleanedDesc);
+  const moneyCount = [...String(rawDesc ?? '').matchAll(/[\d.]{1,10},\d{2}/g)].length;
+
+  return (
+    moneyCount >= 2 &&
+    (
+      rawNormalized.includes('PROXIMAS FATURAS') ||
+      rawNormalized.includes('PROXIMA FATURA') ||
+      rawNormalized.includes('XIMAS FATURAS') ||
+      rawNormalized.includes('COMPRAS PARCELADAS') ||
+      cleanNormalized.includes('PROXIMAS FATURAS') ||
+      cleanNormalized.includes('PROXIMA FATURA') ||
+      cleanNormalized.includes('XIMAS FATURAS')
+    )
+  );
 }
 
 function extractTransactionCandidate(text) {

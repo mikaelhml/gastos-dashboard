@@ -19,6 +19,7 @@ export function buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, tran
   const totals      = calcTotals(assinaturas, despesasFixas);
   const summaryReal = extratoSummary.filter(m => !m.apenasHistorico);
 
+  buildTopSummaryCards(totals, despesasFixas, lancamentos);
   buildCharts(assinaturas, despesasFixas);
   buildNewKpiCards(summaryReal, lancamentos);
   buildRenovacaoAlerta(assinaturas);
@@ -204,9 +205,63 @@ function buildPrevisaoMes(summaryReal, totals) {
 // ── Cálculos de totais ────────────────────────────────────────────────────────
 
 function calcTotals(assinaturas, despesasFixas) {
-  const totalAssinaturas = assinaturas.reduce((s, a) => s + a.valor, 0);
-  const totalFixas       = despesasFixas.filter(d => d.ativo !== false).reduce((s, d) => s + d.valor, 0);
+  const totalAssinaturas = assinaturas.reduce((s, a) => s + toMoney(a.valor), 0);
+  const totalFixas       = despesasFixas.filter(d => d.ativo !== false).reduce((s, d) => s + toMoney(d.valor), 0);
   return { totalAssinaturas, totalFixas, total: totalAssinaturas + totalFixas };
+}
+
+function buildTopSummaryCards(totals, despesasFixas, lancamentos) {
+  const totalSubsEl = document.getElementById('totalSubs');
+  const totalFixedEl = document.getElementById('totalFixed');
+  const totalAllEl = document.getElementById('totalAll');
+  const totalAnualEl = document.getElementById('totalAnual');
+  const totalSaldoEl = document.getElementById('totalSaldoDevedor');
+  const totalSaldoSubEl = document.getElementById('totalSaldoSub');
+
+  if (totalSubsEl) totalSubsEl.textContent = fmt(totals.totalAssinaturas);
+  if (totalFixedEl) totalFixedEl.textContent = fmt(totals.totalFixas);
+  if (totalAllEl) totalAllEl.textContent = fmt(totals.total);
+  if (totalAnualEl) totalAnualEl.textContent = fmt(totals.total * 12);
+
+  const saldoParcelasFixas = despesasFixas
+    .filter(item => item.ativo !== false && item.parcelas)
+    .reduce((sum, item) => {
+      const pagas = Number(item.parcelas?.pagas);
+      const total = Number(item.parcelas?.total);
+      if (!Number.isInteger(pagas) || !Number.isInteger(total) || total <= pagas) return sum;
+      return sum + ((total - pagas) * toMoney(item.valor));
+    }, 0);
+
+  const gruposCartao = new Map();
+  lancamentos
+    .filter(item => item.parcela)
+    .forEach(item => {
+      const key = `${item.desc}|${item.parcela}`;
+      if (!gruposCartao.has(key)) gruposCartao.set(key, item);
+    });
+
+  const saldoParcelasCartao = [...gruposCartao.values()].reduce((sum, item) => {
+    const [atual, total] = String(item.parcela ?? '').split('/').map(Number);
+    if (!Number.isInteger(atual) || !Number.isInteger(total) || total <= atual) return sum;
+    return sum + ((total - atual) * toMoney(item.valor));
+  }, 0);
+
+  const saldoDevedor = saldoParcelasFixas + saldoParcelasCartao;
+  if (totalSaldoEl) totalSaldoEl.textContent = fmt(saldoDevedor);
+
+  if (totalSaldoSubEl) {
+    const partes = [];
+    if (saldoParcelasFixas > 0) partes.push('despesas parceladas');
+    if (saldoParcelasCartao > 0) partes.push('cartão parcelado');
+    totalSaldoSubEl.textContent = partes.length > 0
+      ? `Em aberto: ${partes.join(' + ')}`
+      : 'Sem parcelamentos em aberto';
+  }
+}
+
+function toMoney(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
 }
 
 // ── Charts estáticos (assinaturas + despesas fixas) ───────────────────────────

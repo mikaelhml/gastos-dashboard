@@ -1,5 +1,6 @@
 import { addItem, getAll, bulkAdd, deleteItem } from '../db.js';
 import { categorizar } from '../utils/categorizer.js';
+import { inferirCanal } from '../utils/transaction-tags.js';
 import { computeHash, extrairEstruturaPDF, parseBRL, MESES_ABREV } from './pdf-utils.js';
 
 // Aceita prefixo de ícone (contactless, débito, etc.) antes da data
@@ -744,6 +745,7 @@ function parseTransactionLine(text, mesFatura) {
     fatura: mesFatura || dataInfo.mes,
     desc,
     cat: categorizar(desc),
+    canal: inferirCanal({ desc, source: 'cartao' }),
     valor,
   };
 }

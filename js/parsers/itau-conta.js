@@ -15,6 +15,7 @@
 
 import { addItem, putItem, getAll, bulkAdd, deleteItem } from '../db.js';
 import { categorizar } from '../utils/categorizer.js';
+import { inferirCanal } from '../utils/transaction-tags.js';
 import {
   computeHash,
   extrairLinhasPDF,
@@ -227,7 +228,10 @@ export async function importarItauConta(file, onProgress = () => {}) {
   }
 
   // 6. Categorizar
-  for (const tx of transacoes) tx.cat = categorizar(tx.desc);
+  for (const tx of transacoes) {
+    tx.cat = categorizar(tx.desc);
+    tx.canal = inferirCanal({ ...tx, source: 'conta' });
+  }
   onProgress(70);
 
   // 7. Determinar meses cobertos

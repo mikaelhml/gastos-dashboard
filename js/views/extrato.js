@@ -1,9 +1,10 @@
 import { fmt } from '../utils/formatters.js';
+import { enriquecerCanal, getCanalMeta, inferirCanal, listarCanais } from '../utils/transaction-tags.js';
 
 let _transacoes = [];
 let _chartCategorias = null;
 let _chartBarrasCategorias = null;
-let _chartTendencia = null;
+let _chartCanais = null;
 
 /**
  * Inicializa a aba Extrato Conta com os dados carregados.
@@ -12,13 +13,13 @@ let _chartTendencia = null;
  */
 export function initExtrato(transacoes, extratoSummary) {
   // Filtra somente meses com dados reais (exclui entrada de histórico puro)
-  _transacoes = transacoes;
+  _transacoes = transacoes.map(t => enriquecerCanal({ ...t, source: 'conta' }));
   const summaryReal = extratoSummary.filter(m => !m.apenasHistorico);
 
-  buildExtratoSummaryBar(transacoes, summaryReal);
-  buildExtratoCharts(transacoes, summaryReal);
-  buildExtratoFixosTable(transacoes, summaryReal);
-  renderExtrato(transacoes);
+  buildExtratoSummaryBar(_transacoes, summaryReal);
+  buildExtratoCharts(_transacoes, summaryReal);
+  buildExtratoFixosTable(_transacoes, summaryReal);
+  renderExtrato(_transacoes);
 }
 
 function buildExtratoSummaryBar(transacoes, summaryReal) {
@@ -43,6 +44,16 @@ function buildExtratoSummaryBar(transacoes, summaryReal) {
   sel.innerHTML = '<option value="">Todas as categorias</option>';
   cats.forEach(c => sel.innerHTML += `<option value="${c}">${c}</option>`);
 
+  const canais = listarCanais(transacoes);
+  const selCanal = document.getElementById('extratoFilterCanal');
+  if (selCanal) {
+    selCanal.innerHTML = '<option value="">Todos os canais</option>';
+    canais.forEach(canal => {
+      const meta = getCanalMeta(canal);
+      selCanal.innerHTML += `<option value="${meta.id}">${meta.icon} ${meta.label}</option>`;
+    });
+  }
+
   // Popula filtro de meses dinamicamente
   const meses   = [...new Set(transacoes.map(t => t.mes))].sort();
   const selMes  = document.getElementById('extratoFilterMes');
@@ -53,7 +64,7 @@ function buildExtratoSummaryBar(transacoes, summaryReal) {
 function buildExtratoCharts(transacoes, summaryReal) {
   if (_chartCategorias)       { _chartCategorias.destroy();       _chartCategorias       = null; }
   if (_chartBarrasCategorias) { _chartBarrasCategorias.destroy(); _chartBarrasCategorias = null; }
-  if (_chartTendencia)        { _chartTendencia.destroy();        _chartTendencia        = null; }
+  if (_chartCanais)           { _chartCanais.destroy();           _chartCanais           = null; }
 
   const saidas    = transacoes.filter(t => t.tipo === 'saida');
   const catTotals = {};
@@ -99,50 +110,42 @@ function buildExtratoCharts(transacoes, summaryReal) {
     },
   });
 
-  // Line — tendência por categoria (top 6, ≥ 2 meses)
-  const tendCanvas = document.getElementById('chartExtratoTendencia');
-  if (tendCanvas && meses.length >= 2) {
-    // Filtra top 6 categorias por total gasto e que aparecem em ≥ 2 meses
-    const top6 = cats
-      .filter(cat => {
-        const mesesComDados = meses.filter(m =>
-          saidas.some(t => t.mes === m && t.cat === cat)
-        );
-        return mesesComDados.length >= 2;
-      })
-      .slice(0, 6);
-
-    if (top6.length > 0) {
-      const tendColors = ['#fc8181','#63b3ed','#68d391','#f6e05e','#b794f4','#f6ad55'];
-      const tendDatasets = top6.map((cat, i) => ({
-        label: cat,
-        data:  meses.map(m =>
-          saidas.filter(t => t.mes === m && t.cat === cat).reduce((s, t) => s + t.valor, 0)
+  const canalCanvas = document.getElementById('chartExtratoCanal');
+  if (canalCanvas) {
+    const canais = listarCanais(saidas);
+    const canalColors = {
+      pix: '#4fd1c5',
+      transferencia: '#b794f4',
+      cartao: '#7f9cf5',
+      boleto: '#f6e05e',
+      debito: '#63b3ed',
+      outro: '#a0aec0',
+    };
+    const canalDatasets = canais.map(canal => {
+      const meta = getCanalMeta(canal);
+      return {
+        label: `${meta.icon} ${meta.label}`,
+        data: meses.map(m =>
+          saidas
+            .filter(t => t.mes === m && (t.canal || inferirCanal(t)) === canal)
+            .reduce((s, t) => s + t.valor, 0)
         ),
-        borderColor: tendColors[i % tendColors.length],
-        backgroundColor: tendColors[i % tendColors.length] + '22',
-        tension: 0.3,
-        fill: false,
-        pointRadius: 5,
-        pointBackgroundColor: tendColors[i % tendColors.length],
-      }));
+        backgroundColor: canalColors[canal] || '#a0aec0',
+        borderRadius: 4,
+      };
+    });
 
-      _chartTendencia = new Chart(tendCanvas, {
-        type: 'line',
-        data: { labels: meses, datasets: tendDatasets },
-        options: {
-          plugins: { legend: { labels: { color: '#a0aec0', font: { size: 10 } } } },
-          scales: {
-            x: { ticks: { color: '#a0aec0' }, grid: { color: '#2d3748' } },
-            y: { ticks: { color: '#a0aec0', callback: v => 'R$' + (v / 1000).toFixed(1) + 'k' }, grid: { color: '#2d3748' } },
-          },
+    _chartCanais = new Chart(canalCanvas, {
+      type: 'bar',
+      data: { labels: meses, datasets: canalDatasets },
+      options: {
+        plugins: { legend: { labels: { color: '#a0aec0', font: { size: 10 } } } },
+        scales: {
+          x: { stacked: true, ticks: { color: '#a0aec0' }, grid: { color: '#2d3748' } },
+          y: { stacked: true, ticks: { color: '#a0aec0', callback: v => 'R$' + (v / 1000).toFixed(0) + 'k' }, grid: { color: '#2d3748' } },
         },
-      });
-    } else {
-      tendCanvas.style.display = 'none';
-      const wrap = tendCanvas.closest('.chart-box');
-      if (wrap) wrap.innerHTML += '<p style="color:#718096;font-size:0.85rem;text-align:center">Dados insuficientes para tendência (mínimo 2 meses por categoria).</p>';
-    }
+      },
+    });
   }
 }
 
@@ -220,13 +223,15 @@ function renderExtrato(data) {
       const bancoLabel = t.banco === 'nubank' ? 'Nubank' : t.banco === 'itau' ? 'Itaú' : null;
       const bancoClass = t.banco === 'nubank' ? 'badge-purple' : 'badge-yellow';
       const bancoBadge = bancoLabel ? `<span class="badge ${bancoClass}" style="font-size:0.7rem">${bancoLabel}</span>` : '';
+      const canalMeta = getCanalMeta(t.canal || inferirCanal(t));
+      const canalBadge = `<span class="badge ${canalMeta.badgeClass}">${canalMeta.icon} ${canalMeta.label}</span>`;
       tbody.innerHTML += `
         <tr>
           <td style="color:#718096">${i + 1}</td>
           <td>${t.data}</td>
           <td><span class="badge badge-blue">${t.mes}</span> ${bancoBadge}</td>
           <td>${t.desc}</td>
-          <td><span class="badge ${isEntrada ? 'badge-green' : 'badge-red'}">${t.cat}</span></td>
+          <td><div class="cell-badges"><span class="badge ${isEntrada ? 'badge-green' : 'badge-red'}">${t.cat}</span>${canalBadge}</div></td>
           <td style="text-align:right;font-weight:600;color:${color}">${sign} ${fmt(t.valor)}</td>
         </tr>`;
     });
@@ -245,11 +250,13 @@ export function filterExtrato() {
   const mes  = document.getElementById('extratoFilterMes').value;
   const tipo = document.getElementById('extratoFilterTipo').value;
   const cat  = document.getElementById('extratoFilterCat').value;
+  const canal = document.getElementById('extratoFilterCanal').value;
   const filtered = _transacoes.filter(t =>
     (!q    || t.desc.toLowerCase().includes(q)) &&
     (!mes  || t.mes  === mes) &&
     (!tipo || t.tipo === tipo) &&
-    (!cat  || t.cat  === cat)
+    (!cat  || t.cat  === cat) &&
+    (!canal || (t.canal || inferirCanal(t)) === canal)
   );
   renderExtrato(filtered);
 }
@@ -259,5 +266,6 @@ export function clearExtratoFilters() {
   document.getElementById('extratoFilterMes').value = '';
   document.getElementById('extratoFilterTipo').value = '';
   document.getElementById('extratoFilterCat').value = '';
+  document.getElementById('extratoFilterCanal').value = '';
   filterExtrato();
 }

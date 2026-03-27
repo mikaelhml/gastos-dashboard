@@ -9,6 +9,12 @@ const REGRAS = [
   // Salário — GS3 Tecnologia (empregador)
   { cat: 'Salário',        keywords: ['GS3', 'PAGAMENTO SAL', 'SAL ', 'SALARIO'] },
 
+  // Alimentação — delivery e apps de comida
+  { cat: 'Alimentação',    keywords: ['IFOOD', 'MERCADO IFOOD', 'RAPPI'] },
+
+  // Transporte — apps de corrida e mobilidade
+  { cat: 'Transporte',     keywords: ['UBER', 'UBER TRIP', '99APP', '99 APP', 'CABIFY'] },
+
   // Família — pessoas conhecidas pelo extrato real
   { cat: 'Família',        keywords: ['DANUZI', 'GERCINA', 'FRANCISCA RODRIGUES'] },
 
@@ -17,6 +23,9 @@ const REGRAS = [
 
   // Fatura de cartão de crédito (Nubank e Itaú — vários nomes: Azul, Uniclass, Infinite)
   { cat: 'Fatura Crédito', keywords: ['PGTO FAT', 'PAGTO FAT', 'PAGAMENTO FAT', 'FATURA', 'ITAU UNIBANC', 'ITAÚ', 'NUBANK FAT', 'NUBANK CRED', 'INT UNICLASS', 'INT AZUL', 'FATURAAZUL', 'FATURAITAU'] },
+
+  // Transferências / movimentações entre contas
+  { cat: 'Transferência',  keywords: ['PIX', 'TRANSFERENCIA', 'TRANSF ', 'TED ', ' DOC', 'DOC '] },
 
   // Moradia — CAIXA (financiamento), condomínio
   { cat: 'Moradia',        keywords: ['CAIXA ECONOMICA', 'CAIXA ECO', 'CEF ', ' CEF', 'CONDOMINIO', 'CONDOMINIOS', 'SINDICO'] },
@@ -43,15 +52,22 @@ const REGRAS = [
   { cat: 'Investimentos',  keywords: ['XP INVEST', 'XP CORRET', 'CORRETORA', 'RESGATE XP', 'INVEST ', 'RICO ', 'GENIAL'] },
 ];
 
+function normalizarTexto(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+}
+
 /**
  * Retorna a categoria para uma descrição de transação.
  * @param {string} desc - Descrição bruta da transação
  * @returns {string} Categoria (ex: 'Salário', 'Família', 'Outros')
  */
 export function categorizar(desc) {
-  const upper = (desc || '').toUpperCase();
+  const upper = normalizarTexto(desc);
   for (const regra of REGRAS) {
-    if (regra.keywords.some(kw => upper.includes(kw))) {
+    if (regra.keywords.some(kw => upper.includes(normalizarTexto(kw)))) {
       return regra.cat;
     }
   }

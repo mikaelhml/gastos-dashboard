@@ -1,6 +1,7 @@
 import { fmt } from '../utils/formatters.js';
 import { addItem, putItem, deleteItem } from '../db.js';
 import { escapeHtml } from '../utils/dom.js';
+import { enriquecerCanal, getCanalMeta, inferirCanal, listarCanais } from '../utils/transaction-tags.js';
 
 let _lancamentos = [];
 let _dialogBound = false;
@@ -26,15 +27,15 @@ function prepareForDb(item) {
 
 export function initLancamentos(lancamentos, extratoTransacoes = [], _assinaturas = [], _despesasFixas = []) {
   // Normaliza extrato para o mesmo formato dos lançamentos do cartão
-  const extratoNorm = extratoTransacoes.map(t => ({
-    ...t,                        // mantém todos os campos originais (incluindo id real)
-    _origId: t.id,               // backup do id real para escrita no DB
-    id:      'ext_' + (t.id ?? Math.random()), // id prefixado para evitar colisão em memória
-    fatura:  t.mes,              // alias de exibição
-    source:  'conta',
+  const extratoNorm = extratoTransacoes.map(t => enriquecerCanal({
+    ...t,
+    _origId: t.id,
+    id: 'ext_' + (t.id ?? Math.random()),
+    fatura: t.mes,
+    source: 'conta',
   }));
 
-  const cartaoNorm = lancamentos.map(l => ({ ...l, source: 'cartao' }));
+  const cartaoNorm = lancamentos.map(l => enriquecerCanal({ ...l, source: 'cartao' }));
 
   // Mescla e ordena por data decrescente
   _lancamentos = [...cartaoNorm, ...extratoNorm].sort((a, b) => parseDataTs(b.data) - parseDataTs(a.data));
@@ -43,6 +44,16 @@ export function initLancamentos(lancamentos, extratoTransacoes = [], _assinatura
   const sel = document.getElementById('filterCat');
   sel.innerHTML = '<option value="">Todas as categorias</option>';
   cats.forEach(c => sel.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`);
+
+  const canais = listarCanais(_lancamentos);
+  const selCanal = document.getElementById('filterCanal');
+  if (selCanal) {
+    selCanal.innerHTML = '<option value="">Todos os canais</option>';
+    canais.forEach(canal => {
+      const meta = getCanalMeta(canal);
+      selCanal.innerHTML += `<option value="${meta.id}">${meta.icon} ${escapeHtml(meta.label)}</option>`;
+    });
+  }
 
   const faturas = [...new Set(_lancamentos.map(l => l.fatura))].sort();
   const selFat = document.getElementById('filterFatura');
@@ -55,12 +66,14 @@ export function initLancamentos(lancamentos, extratoTransacoes = [], _assinatura
 }
 
 const CAT_COLORS = {
+  'Alimentação':    { bg: '#33210d', color: '#f6ad55', border: '#744210' },
   'Salário':        { bg: '#1a4731', color: '#68d391', border: '#276749' },
   'Rendimento':     { bg: '#1a3a3a', color: '#4fd1c5', border: '#234e52' },
   'Família':        { bg: '#3d1a3a', color: '#f687b3', border: '#702459' },
   'Moradia':        { bg: '#1a2e4a', color: '#63b3ed', border: '#2a4a7f' },
   'Educação':       { bg: '#1e2257', color: '#7f9cf5', border: '#3c366b' },
   'Telecom':        { bg: '#1a3340', color: '#76e4f7', border: '#1d4044' },
+  'Transporte':     { bg: '#1f2a44', color: '#90cdf4', border: '#2c5282' },
   'Utilidades':     { bg: '#3d3000', color: '#f6e05e', border: '#744210' },
   'Fatura Crédito': { bg: '#3d1a1a', color: '#fc8181', border: '#742a2a' },
   'Saúde':          { bg: '#3d2a1a', color: '#fbd38d', border: '#7b341e' },
@@ -88,6 +101,11 @@ function buildTipoBadge(l) {
   if (!m) return '';
   const nome = l.classificado_nome ? ` · ${escapeHtml(l.classificado_nome)}` : '';
   return `<span class="${m.cls}">${m.icon} ${m.label}${nome}</span>`;
+}
+
+function buildCanalBadge(item) {
+  const meta = getCanalMeta(item.canal || inferirCanal(item));
+  return `<span class="badge ${meta.badgeClass}">${meta.icon} ${escapeHtml(meta.label)}</span>`;
 }
 
 function calcParcelaAtual(parcela, dataLanc) {
@@ -146,6 +164,7 @@ function renderLancamentos(data) {
     const origemBadge = isConta
       ? `<span class="badge" style="background:#1a3535;color:#4fd1c5;border:1px solid #234e52;font-size:0.7rem;margin-left:4px">🏦 Conta</span>`
       : `<span class="badge" style="background:#1a2240;color:#7f9cf5;border:1px solid #3c366b;font-size:0.7rem;margin-left:4px">💳 Cartão</span>`;
+    const canalBadge = buildCanalBadge(l);
 
     // Saídas da conta também são classificáveis (despesa, assinatura etc.)
     const canClassify = !isConta || l.tipo === 'saida';
@@ -180,7 +199,7 @@ function renderLancamentos(data) {
         <td>${escapeHtml(l.data)}</td>
         <td><span class="badge badge-blue">${escapeHtml(l.fatura)}</span>${origemBadge}</td>
         <td>${descHtml}</td>
-        <td><span class="badge" style="${catBadgeStyle(l.cat)}">${escapeHtml(l.cat)}</span></td>
+        <td><div class="cell-badges"><span class="badge" style="${catBadgeStyle(l.cat)}">${escapeHtml(l.cat)}</span>${canalBadge}</div></td>
         <td style="text-align:right;font-weight:600;color:${valorColor}">${valorSign}${fmt(l.valor)}</td>
         <td style="text-align:right">${acoesHtml}</td>
       </tr>`;
@@ -207,12 +226,14 @@ export function filterLancamentos() {
   const cat    = document.getElementById('filterCat').value;
   const tipo   = document.getElementById('filterTipo')?.value || '';
   const origem = document.getElementById('filterOrigem')?.value || '';
+  const canal  = document.getElementById('filterCanal')?.value || '';
 
   const filtered = _lancamentos.filter(l => {
     if (q && !l.desc.toLowerCase().includes(q)) return false;
     if (fat && l.fatura !== fat) return false;
     if (cat && l.cat !== cat) return false;
     if (origem && l.source !== origem) return false;
+    if (canal && (l.canal || inferirCanal(l)) !== canal) return false;
     if (tipo === 'nao_classificado' && l.tipo_classificado) return false;
     if (tipo && tipo !== 'nao_classificado' && l.tipo_classificado !== tipo) return false;
     return true;
@@ -225,8 +246,10 @@ export function clearLancamentosFilters() {
   document.getElementById('filterFatura').value = '';
   document.getElementById('filterCat').value = '';
   const filterTipo   = document.getElementById('filterTipo');
+  const filterCanal  = document.getElementById('filterCanal');
   const filterOrigem = document.getElementById('filterOrigem');
   if (filterTipo)   filterTipo.value = '';
+  if (filterCanal)  filterCanal.value = '';
   if (filterOrigem) filterOrigem.value = '';
   filterLancamentos();
 }
@@ -430,10 +453,11 @@ function bindEditDialog() {
       return;
     }
 
-    const updated = prepareForDb({ ...lancamento, data, fatura, desc, cat, valor, parcela });
+    const canal = inferirCanal({ ...lancamento, data, fatura, desc, cat, valor, parcela });
+    const updated = prepareForDb({ ...lancamento, data, fatura, desc, cat, canal, valor, parcela });
     await putItem(getStore(lancamento), updated);
     const idx = _lancamentos.findIndex(l => String(l.id) === String(rawId));
-    if (idx !== -1) { _lancamentos[idx] = { ..._lancamentos[idx], data, fatura, desc, cat, valor, parcela }; }
+    if (idx !== -1) { _lancamentos[idx] = { ..._lancamentos[idx], data, fatura, desc, cat, canal, valor, parcela }; }
 
     setFeedback('Salvo!', 'success', 'lancamentoEditFeedback');
     setTimeout(() => { close(); renderLancamentos(_lancamentos); }, 700);

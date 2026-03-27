@@ -95,6 +95,17 @@ tr:hover td { background: #2d3748; }
 .badge-red { background: #4a1515; color: #fc8181; }
 .badge-purple { background: #2d1f4f; color: #b794f4; }
 .badge-gray { background: #2d3748; color: #a0aec0; }
+.badge-canal-pix { background: #143b3b; color: #4fd1c5; border: 1px solid #234e52; }
+.badge-canal-transferencia { background: #2d1f4f; color: #d6bcfa; border: 1px solid #553c9a; }
+.badge-canal-cartao { background: #1a2240; color: #a3bffa; border: 1px solid #3c366b; }
+.badge-canal-boleto { background: #3d3206; color: #f6e05e; border: 1px solid #744210; }
+.badge-canal-debito { background: #18324a; color: #90cdf4; border: 1px solid #2c5282; }
+.cell-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
 
 /* Section titles */
 .section-title { font-size: 1rem; font-weight: 600; color: #e2e8f0; margin: 24px 0 12px; display: flex; align-items: center; gap: 8px; }

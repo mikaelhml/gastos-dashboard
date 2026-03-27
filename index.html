@@ -293,6 +293,9 @@
       <option value="cartao">💳 Cartão</option>
       <option value="conta">🏦 Conta</option>
     </select>
+    <select id="filterCanal" aria-label="Filtrar por canal" onchange="filterLancamentos()">
+      <option value="">Todos os canais</option>
+    </select>
     <select id="filterTipo" aria-label="Filtrar por tipo de classificação" onchange="filterLancamentos()">
       <option value="">Todos os tipos</option>
       <option value="nao_classificado">Não classificados</option>
@@ -306,7 +309,7 @@
   <div class="table-wrap">
     <table>
       <thead>
-        <tr><th>#</th><th>Data</th><th>Fatura / Mês</th><th>Descrição</th><th>Categoria</th><th style="text-align:right">Valor</th><th style="text-align:right">Ações</th></tr>
+        <tr><th>#</th><th>Data</th><th>Fatura / Mês</th><th>Descrição</th><th>Categoria / Canal</th><th style="text-align:right">Valor</th><th style="text-align:right">Ações</th></tr>
       </thead>
       <tbody id="lancamentosTable"></tbody>
     </table>
@@ -473,8 +476,8 @@
 
   <div class="chart-grid" style="margin-bottom:24px">
     <div class="chart-box" style="grid-column:span 2">
-      <h3>📈 Tendência por Categoria (meses)</h3>
-      <canvas id="chartExtratoTendencia" style="max-height:300px"></canvas>
+      <h3>📊 Saídas por Canal / Origem</h3>
+      <canvas id="chartExtratoCanal" style="max-height:300px"></canvas>
     </div>
   </div>
 
@@ -496,11 +499,14 @@
       <option value="saida">Saídas</option>
     </select>
     <select id="extratoFilterCat" aria-label="Filtrar extrato por categoria" onchange="filterExtrato()"></select>
+    <select id="extratoFilterCanal" aria-label="Filtrar extrato por canal" onchange="filterExtrato()">
+      <option value="">Todos os canais</option>
+    </select>
     <button type="button" class="btn-inline-secondary btn-filter-clear" onclick="clearExtratoFilters()">Limpar filtros</button>
   </div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>#</th><th>Data</th><th>Mês</th><th>Descrição</th><th>Categoria</th><th style="text-align:right">Valor</th></tr></thead>
+      <thead><tr><th>#</th><th>Data</th><th>Mês</th><th>Descrição</th><th>Categoria / Canal</th><th style="text-align:right">Valor</th></tr></thead>
       <tbody id="extratoTable"></tbody>
     </table>
   </div>
@@ -705,6 +711,9 @@
         <span style="font-size:0.75rem;background:#276749;color:#68d391;padding:2px 10px;border-radius:20px">Mar/2026 · atual</span>
       </div>
       <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;font-size:0.88rem;color:#a0aec0;line-height:1.6">
+        <li>🏷️ Novo eixo de canal/origem: filtros e badges para PIX, Transferência, Cartão, Boleto e Débito nas abas Lançamentos e Extrato</li>
+        <li>🍔🚗 Regras automáticas ampliadas: IFOOD/Mercado iFood agora cai em Alimentação, Uber/99/Cabify em Transporte e PIX/TED/DOC em Transferência</li>
+        <li>📊 Gráfico de tendência substituído por Saídas por Canal / Origem, deixando mais claro quanto saiu via PIX, cartão e transferências</li>
         <li>🏦 Importação de extrato conta corrente Itaú — parser dedicado com detecção automática por nome de arquivo</li>
         <li>🔒 Correção crítica: reimportar um PDF não apaga mais transações de outra conta no mesmo mês</li>
         <li>🏷️ Badge de banco (Nubank / Itaú) em cada linha na aba Extrato Conta</li>

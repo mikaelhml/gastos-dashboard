@@ -1,5 +1,6 @@
 import { addItem, getAll, bulkAdd, deleteItem } from '../db.js';
 import { categorizar } from '../utils/categorizer.js';
+import { inferirCanal } from '../utils/transaction-tags.js';
 import {
   computeHash,
   extrairLinhasPDF,
@@ -225,6 +226,7 @@ function parsearLancamentos(linhas, mesFatura) {
       fatura: mesFatura || dataInfo.mes,
       desc,
       cat: categorizar(desc),
+      canal: inferirCanal({ desc, source: 'cartao' }),
       valor,
       ...(parcela ? { parcela, totalCompra: null } : {}),
     });

@@ -170,6 +170,33 @@ export function parseBRL(str) {
   return parseFloat(str.trim().replace(/\./g, '').replace(',', '.'));
 }
 
+export function extrairParcelaFinal(texto) {
+  const raw = String(texto ?? '').trim();
+  if (!raw) return null;
+
+  const match = raw.match(/(\d{1,2}\/\d{1,2})\s*$/);
+  if (!match) return null;
+
+  const [atual, total] = match[1].split('/').map(Number);
+  if (
+    !Number.isInteger(atual) ||
+    !Number.isInteger(total) ||
+    total < 2 ||
+    total > 36 ||
+    atual < 1 ||
+    atual > total
+  ) {
+    return null;
+  }
+
+  return {
+    parcela: `${atual}/${total}`,
+    atual,
+    total,
+    desc: raw.slice(0, match.index).trim(),
+  };
+}
+
 export function parseDataNubank(str, fallbackYear = null) {
   const m = str.match(/^(\d{2})\s+([A-Z]{3})(?:\s+(\d{4}))?/i);
   if (!m) return null;

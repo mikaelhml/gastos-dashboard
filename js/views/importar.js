@@ -290,9 +290,13 @@ async function _importarUmArquivo(file) {
 
     setResultado(
       '✅',
-      `${tipoLabel} · ${resultado.importado} item(ns) importado(s)`,
+      tipo === 'registrato-scr'
+        ? `${tipoLabel} · ${resultado.importado} competência(s) importada(s)`
+        : `${tipoLabel} · ${resultado.importado} item(ns) importado(s)`,
       '#68d391',
-      `Período: ${resultado.mes} — dados salvos com sucesso.`,
+      tipo === 'registrato-scr'
+        ? `Período: ${resultado.mes} — ${resultado.paginas ?? '—'} página(s) lida(s) e ${resultado.snapshots ?? '—'} snapshot(s) consolidados.`
+        : `Período: ${resultado.mes} — dados salvos com sucesso.`,
     );
     return true;
 

@@ -4,6 +4,7 @@ import { inferirCanal } from '../utils/transaction-tags.js';
 import {
   computeHash,
   extrairLinhasPDF,
+  extrairParcelaFinal,
   parseBRL,
   parseDataNubank,
   MESES_ABREV,
@@ -14,7 +15,6 @@ import {
 
 const RE_VALOR_FINAL = /([\d.]{1,10},\d{2})\s*$/;
 const RE_TRANSACAO = /^((?:\d{2}\s+[A-Z]{3}(?:\s+\d{4})?)|(?:\d{2}\/\d{2}(?:\/\d{4})?))\s+(.+?)\s+([\d.]{1,10},\d{2})$/i;
-const RE_PARCELA = /\s+(\d{1,2}\/\d{1,2})\s*$/;
 const RE_DATA_SOZINHA = /^(?:\d{2}\s+[A-Z]{3}(?:\s+\d{4})?|\d{2}\/\d{2}(?:\/\d{4})?)$/i;
 const RE_LINHA_INVALIDA = /^(pagamento recebido|saldo em aberto|total|encargos|juros|multa|iof|limite|resumo|cliente|cpf|vencimento|fechamento|parcelamento de fatura|valor pago|demonstrativo|ol[aá],|nubank)/i;
 // Descs inválidas no novo layout Nubank (a linha começa com data, mas desc é de controle)
@@ -236,26 +236,14 @@ function parsearLancamentos(linhas, mesFatura) {
 }
 
 function extrairParcelaValida(desc) {
-  const parcelaMatch = desc.match(RE_PARCELA);
-  if (!parcelaMatch) return null;
+  const parcelaInfo = extrairParcelaFinal(desc);
+  if (!parcelaInfo) return null;
 
-  const [atual, total] = parcelaMatch[1].split('/').map(Number);
-  if (
-    !Number.isInteger(atual) ||
-    !Number.isInteger(total) ||
-    total < 2 ||
-    total > 36 ||
-    atual < 1 ||
-    atual > total
-  ) {
-    return null;
-  }
-
-  const descSemParcela = desc.slice(0, desc.length - parcelaMatch[0].length).trim();
+  const descSemParcela = parcelaInfo.desc;
   if (descSemParcela.length < 2 || !temDescricaoComercialMinima(descSemParcela)) return null;
 
   return {
-    parcela: parcelaMatch[1],
+    parcela: parcelaInfo.parcela,
     desc: descSemParcela,
   };
 }

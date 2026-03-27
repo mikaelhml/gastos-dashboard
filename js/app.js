@@ -16,14 +16,17 @@ import { buildVisaoGeral }              from './views/visao-geral.js';
 import { buildAssinaturas }             from './views/assinaturas.js';
 import { buildDespesasFixas }           from './views/despesas-fixas.js';
 import { buildParcelamentos }           from './views/parcelamentos.js';
-import { initLancamentos, filterLancamentos, clearLancamentosFilters } from './views/lancamentos.js';
+import { initLancamentos, filterLancamentos, clearLancamentosFilters, sortLancamentosBy } from './views/lancamentos.js';
 import { initExtrato, filterExtrato, clearExtratoFilters }   from './views/extrato.js';
 import { initProjecao, recalcularProjecao } from './views/projecao.js';
 import { buildRegistrato }               from './views/registrato.js';
 import { buildImportar, clearBase, clearAllDashboardData }     from './views/importar.js';
 import { buildRegistratoSuggestions, computeRegistratoInsights }   from './utils/registrato-suggestions.js';
+import { extrairParcelaFinal } from './parsers/pdf-utils.js';
+import { buildCardBillSummaries, buildRegistratoContextRows } from './utils/dashboard-context.js';
 
 let _refreshChain = Promise.resolve();
+const REGISTRATO_VALUE_FIELDS = ['emDia', 'vencida', 'outrosCompromissos', 'creditoALiberar', 'coobrigacoes', 'limite'];
 
 // ── Inicialização ─────────────────────────────────────────────────────────────
 
@@ -87,17 +90,22 @@ async function loadDashboardData() {
     return mesesNomes.indexOf(mA) - mesesNomes.indexOf(mB);
   });
 
+  const lancamentosNormalizados = lancamentos.map(normalizeLancamentoCartao);
+
+  const registratoResumosNormalizados = registratoResumos.filter(normalizeRegistratoEntry);
+  const registratoSnapshotsNormalizados = registratoSnapshots.filter(normalizeRegistratoEntry);
+
   return {
     assinaturas,
     observacoes,
     despesasFixas: despesasFixas.map(normalizeDespesaFixa),
-    lancamentos,
+    lancamentos: lancamentosNormalizados,
     extratoTransacoes,
     extratoSummary,
     orcamentos,
     assinaturaSugestoesDispensa,
-    registratoSnapshots,
-    registratoResumos,
+    registratoSnapshots: registratoSnapshotsNormalizados,
+    registratoResumos: registratoResumosNormalizados,
     registratoSugestoesDispensa,
   };
 }
@@ -127,6 +135,32 @@ function normalizeDespesaFixa(item) {
   };
 }
 
+function normalizeLancamentoCartao(item) {
+  const desc = String(item?.desc ?? '').trim();
+  if (!desc || item?.parcela) return item;
+
+  const parcelaInfo = extrairParcelaFinal(desc);
+  if (!parcelaInfo || !parcelaInfo.desc) return item;
+
+  return {
+    ...item,
+    desc: parcelaInfo.desc,
+    parcela: parcelaInfo.parcela,
+    totalCompra: item?.totalCompra ?? null,
+  };
+}
+
+function normalizeRegistratoEntry(item) {
+  if (!item) return false;
+  if (item?.semRegistros) return true;
+  if (Number(item?.totalOperacoes || 0) > 0) return true;
+
+  return REGISTRATO_VALUE_FIELDS.some(field => {
+    const value = Number(item?.[field]);
+    return Number.isFinite(value) && value > 0;
+  });
+}
+
 async function renderDashboard() {
   const {
     assinaturas,
@@ -152,13 +186,31 @@ async function renderDashboard() {
     dismissals: registratoSugestoesDispensa,
   });
   const registratoInsights = computeRegistratoInsights(registratoResumos, registratoSuggestions);
+  const cardBillSummaries = buildCardBillSummaries(lancamentos);
+  const extratoContextRows = buildRegistratoContextRows(
+    registratoResumos,
+    [...new Set(extratoTransacoes.map(item => item?.mes).filter(Boolean))],
+    'extrato',
+  );
+  const lancamentosContextRows = buildRegistratoContextRows(
+    registratoResumos,
+    [...new Set(lancamentos.map(item => item?.fatura || item?.mes).filter(Boolean))],
+    'lancamentos',
+  );
 
-  buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, extratoTransacoes, lancamentos, registratoInsights);
+  buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, extratoTransacoes, lancamentos, registratoInsights, cardBillSummaries);
   buildAssinaturas(assinaturas, observacoes, lancamentos, extratoTransacoes, assinaturaSugestoesDispensa);
   buildDespesasFixas(despesasFixas, registratoSuggestions);
   buildParcelamentos(despesasFixas, lancamentos);
-  initLancamentos(lancamentos, extratoTransacoes, assinaturas, despesasFixas);
-  initExtrato(extratoTransacoes, extratoSummary);
+  initLancamentos(lancamentos, extratoTransacoes, assinaturas, despesasFixas, {
+    cardBillSummaries,
+    registratoContextRows: lancamentosContextRows,
+  });
+  initExtrato(extratoTransacoes, extratoSummary, {
+    cardBillSummaries,
+    registratoContextRows: extratoContextRows,
+    registratoInsights,
+  });
   initProjecao(despesasFixas, extratoSummary, registratoInsights);
   buildRegistrato(registratoResumos, registratoSnapshots, registratoSuggestions, registratoInsights);
   await buildImportar();
@@ -213,6 +265,7 @@ function bindTabKeyboardNavigation() {
 
 window.switchTab          = switchTab;
 window.filterLancamentos  = filterLancamentos;
+window.sortLancamentosBy  = sortLancamentosBy;
 window.clearLancamentosFilters = clearLancamentosFilters;
 window.filterExtrato      = filterExtrato;
 window.clearExtratoFilters = clearExtratoFilters;

@@ -72,6 +72,11 @@
       <div class="value" id="saldoAtualConta" style="color:#68d391">—</div>
       <div class="sub" id="saldoAtualSub">Sem extrato importado</div>
     </div>
+    <div class="card" style="--accent:#fc8181">
+      <div class="label">Última Fatura do Cartão</div>
+      <div class="value" id="faturaAtualCartao" style="color:#fc8181">—</div>
+      <div class="sub" id="faturaAtualSub">Sem fatura importada</div>
+    </div>
     <div class="card" style="--accent:#f6ad55">
       <div class="label">Lançamentos s/ Classificar</div>
       <div class="value" id="lancamentosNaoClassificados" style="color:#f6ad55">—</div>
@@ -313,6 +318,7 @@
       <option value="">Todos</option>
       <option value="cartao">💳 Cartão</option>
       <option value="conta">🏦 Conta</option>
+      <option value="registrato">🏛️ Registrato</option>
     </select>
     <select id="filterCanal" aria-label="Filtrar por canal" onchange="filterLancamentos()">
       <option value="">Todos os canais</option>
@@ -328,10 +334,19 @@
     </select>
     <button type="button" class="btn-inline-secondary btn-filter-clear" onclick="clearLancamentosFilters()">Limpar filtros</button>
   </div>
+  <div id="lancamentosContextPanel" class="helper-panel" style="display:none"></div>
   <div class="table-wrap">
     <table>
       <thead>
-        <tr><th>#</th><th>Data</th><th>Fatura / Mês</th><th>Descrição</th><th>Categoria / Canal</th><th style="text-align:right">Valor</th><th style="text-align:right">Ações</th></tr>
+        <tr>
+          <th>#</th>
+          <th><button type="button" class="table-sort-button" data-sort-lancamentos="data" data-sort-label="Data" onclick="sortLancamentosBy('data')">Data</button></th>
+          <th><button type="button" class="table-sort-button" data-sort-lancamentos="fatura" data-sort-label="Fatura / Mês" onclick="sortLancamentosBy('fatura')">Fatura / Mês</button></th>
+          <th><button type="button" class="table-sort-button" data-sort-lancamentos="descricao" data-sort-label="Descrição" onclick="sortLancamentosBy('descricao')">Descrição</button></th>
+          <th><button type="button" class="table-sort-button" data-sort-lancamentos="categoria" data-sort-label="Categoria / Canal" onclick="sortLancamentosBy('categoria')">Categoria / Canal</button></th>
+          <th style="text-align:right"><button type="button" class="table-sort-button table-sort-button-right" data-sort-lancamentos="valor" data-sort-label="Valor" onclick="sortLancamentosBy('valor')">Valor</button></th>
+          <th style="text-align:right">Ações</th>
+        </tr>
       </thead>
       <tbody id="lancamentosTable"></tbody>
     </table>
@@ -484,6 +499,7 @@
     <div class="divider"></div>
     <div class="sb-item"><span class="sb-label">Saldo final:</span><span class="sb-value" id="extratoSaldoFinal">—</span></div>
   </div>
+  <div id="extratoContextPanel" class="helper-panel" style="display:none"></div>
 
   <div class="chart-grid" style="margin-bottom:24px">
     <div class="chart-box">

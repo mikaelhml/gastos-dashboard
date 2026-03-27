@@ -249,7 +249,13 @@ function renderMonthTable(monthHistory) {
   return monthHistory
     .slice()
     .reverse()
-    .map(item => `
+    .map(item => item?.semRegistros
+      ? `
+      <tr>
+        <td>${escapeHtml(item.mesLabel || item.mesRef)}</td>
+        <td colspan="6" style="color:#a0aec0;font-style:italic">Sem registros de operações de crédito nesta competência.</td>
+      </tr>`
+      : `
       <tr>
         <td>${escapeHtml(item.mesLabel || item.mesRef)}</td>
         <td style="text-align:right">${escapeHtml(fmt(Number(item?.emDia || 0)))}</td>

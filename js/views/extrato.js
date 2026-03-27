@@ -1,4 +1,5 @@
 import { fmt } from '../utils/formatters.js';
+import { escapeHtml } from '../utils/dom.js';
 import { enriquecerCanal, getCanalMeta, inferirCanal, listarCanais } from '../utils/transaction-tags.js';
 
 let _transacoes = [];
@@ -11,14 +12,17 @@ let _chartCanais = null;
  * @param {Array} transacoes
  * @param {Array} extratoSummary  (inclui entrada apenasHistorico)
  */
-export function initExtrato(transacoes, extratoSummary) {
+export function initExtrato(transacoes, extratoSummary, context = {}) {
   // Filtra somente meses com dados reais (exclui entrada de histórico puro)
-  _transacoes = transacoes.map(t => enriquecerCanal({ ...t, source: 'conta' }));
+  const transacoesConta = transacoes.map(t => enriquecerCanal({ ...t, source: 'conta' }));
+  const contextRows = (context.registratoContextRows || []).map(item => ({ ...item }));
+  _transacoes = [...transacoesConta, ...contextRows].sort(compareExtratoItems);
   const summaryReal = extratoSummary.filter(m => !m.apenasHistorico);
 
-  buildExtratoSummaryBar(_transacoes, summaryReal);
-  buildExtratoCharts(_transacoes, summaryReal);
-  buildExtratoFixosTable(_transacoes, summaryReal);
+  buildExtratoSummaryBar(transacoesConta, summaryReal);
+  buildExtratoCharts(transacoesConta, summaryReal);
+  buildExtratoFixosTable(transacoesConta, summaryReal);
+  buildExtratoContextPanel(context.cardBillSummaries || [], context.registratoInsights || null, contextRows);
   renderExtrato(_transacoes);
 }
 
@@ -217,6 +221,27 @@ function renderExtrato(data) {
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#718096;padding:20px">Nenhuma movimentação importada.</td></tr>';
   } else {
     data.forEach((t, i) => {
+      if (t.contextoDerivado) {
+        const resumo = t.registratoResumo || {};
+        const detalhamento = resumo.semRegistros
+          ? 'Sem operações de crédito nesta competência.'
+          : `Em dia ${fmt(Number(resumo.emDia || 0))} · Vencida ${fmt(Number(resumo.vencida || 0))} · Outros ${fmt(Number(resumo.outrosCompromissos || 0))}`;
+
+        tbody.innerHTML += `
+          <tr class="row-contexto-scr">
+            <td style="color:#718096">${i + 1}</td>
+            <td>${escapeHtml(t.data)}</td>
+            <td><span class="badge badge-purple">${escapeHtml(t.mes || '—')}</span></td>
+            <td>
+              <div style="font-weight:600;color:#b794f4">${escapeHtml(t.desc)}</div>
+              <div style="font-size:0.78rem;color:#718096;margin-top:4px">${escapeHtml(detalhamento)}</div>
+            </td>
+            <td><div class="cell-badges"><span class="badge badge-purple">🏛️ ${escapeHtml(t.cat || 'Contexto SCR')}</span></div></td>
+            <td style="text-align:right;font-weight:600;color:#b794f4">${resumo.semRegistros ? '—' : fmt(Number(t.valor || 0))}</td>
+          </tr>`;
+        return;
+      }
+
       const isEntrada = t.tipo === 'entrada';
       const color = isEntrada ? '#68d391' : '#fc8181';
       const sign  = isEntrada ? '+' : '-';
@@ -237,12 +262,57 @@ function renderExtrato(data) {
     });
   }
 
-  const totalE = data.filter(t => t.tipo === 'entrada').reduce((s, t) => s + t.valor, 0);
-  const totalS = data.filter(t => t.tipo === 'saida').reduce((s, t) => s + t.valor, 0);
+  const reais = data.filter(t => !t.contextoDerivado);
+  const contextos = data.filter(t => t.contextoDerivado).length;
+  const totalE = reais.filter(t => t.tipo === 'entrada').reduce((s, t) => s + t.valor, 0);
+  const totalS = reais.filter(t => t.tipo === 'saida').reduce((s, t) => s + t.valor, 0);
   document.getElementById('extratoCount').innerHTML =
-    `${data.length} movimentaç${data.length === 1 ? 'ão' : 'ões'} · ` +
+    `${reais.length} movimentaç${reais.length === 1 ? 'ão' : 'ões'} reais` +
+    `${contextos ? ` &nbsp;·&nbsp; <span style="color:#b794f4">🏛️ ${contextos} linha(s) SCR</span>` : ''} · ` +
     `<span style="color:#68d391">▲ Entradas: ${fmt(totalE)}</span> &nbsp;·&nbsp; ` +
     `<span style="color:#fc8181">▼ Saídas: ${fmt(totalS)}</span>`;
+}
+
+function buildExtratoContextPanel(cardBillSummaries, registratoInsights, contextRows) {
+  const panel = document.getElementById('extratoContextPanel');
+  if (!panel) return;
+
+  const ultimaFatura = cardBillSummaries[0] || null;
+  const totalCartao = cardBillSummaries.reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const linhasScr = contextRows.length;
+
+  if (!ultimaFatura && !registratoInsights && !linhasScr) {
+    panel.style.display = 'none';
+    panel.innerHTML = '';
+    return;
+  }
+
+  panel.style.display = '';
+  panel.innerHTML = `
+    <div class="helper-panel-header">
+      <div>
+        <h3>Conta + Cartão + Registrato no mesmo contexto</h3>
+        <p>O fluxo da conta continua limpo. Cartão e SCR entram aqui e na tabela apenas como leitura derivada, sem contaminar saldo nem duplicar transações.</p>
+      </div>
+    </div>
+    <div class="helper-badges">
+      ${ultimaFatura ? `<span class="badge badge-red">💳 Última fatura ${escapeHtml(ultimaFatura.fatura)} · ${escapeHtml(fmt(ultimaFatura.total))}</span>` : ''}
+      ${Number(totalCartao) > 0 ? `<span class="badge badge-blue">🧾 Total importado em cartão · ${escapeHtml(fmt(totalCartao))}</span>` : ''}
+      ${registratoInsights ? `<span class="badge badge-purple">🏛️ SCR sem limites · ${escapeHtml(fmt(registratoInsights.exposicaoTotal || 0))}</span>` : ''}
+      ${linhasScr ? `<span class="badge badge-purple">🔎 ${linhasScr} linha(s) derivada(s) do SCR no período do extrato</span>` : ''}
+    </div>
+  `;
+}
+
+function compareExtratoItems(a, b) {
+  return parseExtratoDateTs(b?.data) - parseExtratoDateTs(a?.data);
+}
+
+function parseExtratoDateTs(data) {
+  const parts = String(data ?? '').split('/').map(Number);
+  if (parts.length !== 3) return 0;
+  const [dd, mm, yyyy] = parts;
+  return new Date(yyyy, mm - 1, dd).getTime();
 }
 
 export function filterExtrato() {

@@ -1,7 +1,7 @@
 import { addItem, getAll, bulkAdd, deleteItem } from '../db.js';
 import { categorizar } from '../utils/categorizer.js';
 import { inferirCanal } from '../utils/transaction-tags.js';
-import { computeHash, extrairEstruturaPDF, parseBRL, MESES_ABREV } from './pdf-utils.js';
+import { computeHash, extrairEstruturaPDF, extrairParcelaFinal, parseBRL, MESES_ABREV } from './pdf-utils.js';
 
 // Aceita prefixo de ícone (contactless, débito, etc.) antes da data
 const RE_DATA_SLASH = /^\d{2}\/\d{2}(?:\/\d{4})?$/;
@@ -884,7 +884,9 @@ function parseTransactionLine(text, mesFatura, sourceKey = '') {
   const { rawData, rawDesc, rawValor } = extracted;
   const dataInfo = parseDataItau(rawData, mesFatura);
   const valor = parseBRL(rawValor);
-  const desc = sanitizarDescricaoItau(rawDesc);
+  const descOriginal = sanitizarDescricaoItau(rawDesc);
+  const parcelaInfo = extrairParcelaValidaDaDescricao(descOriginal);
+  const desc = parcelaInfo?.desc || descOriginal;
 
   if (
     !dataInfo ||
@@ -904,6 +906,7 @@ function parseTransactionLine(text, mesFatura, sourceKey = '') {
     cat: categorizar(desc),
     canal: inferirCanal({ desc, source: 'cartao' }),
     valor,
+    ...(parcelaInfo ? { parcela: parcelaInfo.parcela, totalCompra: null } : {}),
     _sourceKey: sourceKey,
   };
 }
@@ -952,32 +955,27 @@ function parseInstallmentLine(text) {
   if (!valorMatch) return null;
 
   const body = text.slice(0, text.lastIndexOf(valorMatch[0])).trim();
-  const parcelaMatch = body.match(/\s+(\d{1,2}\/\d{1,2})\s*$/);
-  if (!parcelaMatch) return null;
+  const parcelaInfo = extrairParcelaValidaDaDescricao(body);
+  if (!parcelaInfo) return null;
 
-  const [atual, total] = parcelaMatch[1].split('/').map(Number);
-  if (
-    !Number.isInteger(atual) ||
-    !Number.isInteger(total) ||
-    total < 2 ||
-    total > 36 ||
-    atual < 1 ||
-    atual > total
-  ) {
+  return {
+    desc: parcelaInfo.desc,
+    parcela: parcelaInfo.parcela,
+  };
+}
+
+function extrairParcelaValidaDaDescricao(desc) {
+  const parcelaInfo = extrairParcelaFinal(desc);
+  if (!parcelaInfo) return null;
+
+  const descSemParcela = sanitizarDescricaoItau(parcelaInfo.desc);
+  if (!descSemParcela || descSemParcela.length < 2 || !temDescricaoComercialMinima(descSemParcela)) {
     return null;
   }
 
-  let desc = body.slice(0, parcelaMatch.index).trim();
-  if (!desc) {
-    desc = body.replace(parcelaMatch[1], '').trim();
-  }
-
-  desc = sanitizarDescricaoItau(desc);
-  if (!desc || desc.length < 2 || !temDescricaoComercialMinima(desc)) return null;
-
   return {
-    desc,
-    parcela: `${atual}/${total}`,
+    parcela: parcelaInfo.parcela,
+    desc: descSemParcela,
   };
 }
 

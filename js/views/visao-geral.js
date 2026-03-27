@@ -15,11 +15,11 @@ const CAT_PALETTE = [
 /**
  * Renderiza a aba Visão Geral.
  */
-export function buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, transacoes, lancamentos = [], registratoInsights = null) {
+export function buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, transacoes, lancamentos = [], registratoInsights = null, cardBillSummaries = []) {
   const totals      = calcTotals(assinaturas, despesasFixas);
   const summaryReal = extratoSummary.filter(m => !m.apenasHistorico);
 
-  buildTopSummaryCards(totals, despesasFixas, lancamentos);
+  buildTopSummaryCards(totals, despesasFixas, lancamentos, cardBillSummaries);
   buildCharts(assinaturas, despesasFixas);
   buildNewKpiCards(summaryReal, lancamentos, registratoInsights);
   buildRenovacaoAlerta(assinaturas);
@@ -216,13 +216,15 @@ function calcTotals(assinaturas, despesasFixas) {
   return { totalAssinaturas, totalFixas, total: totalAssinaturas + totalFixas };
 }
 
-function buildTopSummaryCards(totals, despesasFixas, lancamentos) {
+function buildTopSummaryCards(totals, despesasFixas, lancamentos, cardBillSummaries = []) {
   const totalSubsEl = document.getElementById('totalSubs');
   const totalFixedEl = document.getElementById('totalFixed');
   const totalAllEl = document.getElementById('totalAll');
   const totalAnualEl = document.getElementById('totalAnual');
   const totalSaldoEl = document.getElementById('totalSaldoDevedor');
   const totalSaldoSubEl = document.getElementById('totalSaldoSub');
+  const faturaAtualEl = document.getElementById('faturaAtualCartao');
+  const faturaAtualSubEl = document.getElementById('faturaAtualSub');
 
   if (totalSubsEl) totalSubsEl.textContent = fmt(totals.totalAssinaturas);
   if (totalFixedEl) totalFixedEl.textContent = fmt(totals.totalFixas);
@@ -262,6 +264,16 @@ function buildTopSummaryCards(totals, despesasFixas, lancamentos) {
     totalSaldoSubEl.textContent = partes.length > 0
       ? `Em aberto: ${partes.join(' + ')}`
       : 'Sem parcelamentos em aberto';
+  }
+
+  const ultimaFatura = cardBillSummaries[0] || null;
+  if (faturaAtualEl) {
+    faturaAtualEl.textContent = ultimaFatura ? fmt(ultimaFatura.total) : '—';
+  }
+  if (faturaAtualSubEl) {
+    faturaAtualSubEl.textContent = ultimaFatura
+      ? `${ultimaFatura.fatura} · ${ultimaFatura.quantidade} lançamento(s)${ultimaFatura.parcelados ? ` · ${ultimaFatura.parcelados} parcelado(s)` : ''}`
+      : 'Sem fatura importada';
   }
 }
 

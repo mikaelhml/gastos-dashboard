@@ -6,6 +6,7 @@ import { enriquecerCanal, getCanalMeta, inferirCanal, listarCanais } from '../ut
 let _lancamentos = [];
 let _dialogBound = false;
 let _editDialogBound = false;
+let _sortState = { key: 'data', direction: 'desc' };
 
 function parseDataTs(data) {
   const parts = String(data ?? '').split('/');
@@ -25,7 +26,7 @@ function prepareForDb(item) {
   return { ...item, id: item._origId };
 }
 
-export function initLancamentos(lancamentos, extratoTransacoes = [], _assinaturas = [], _despesasFixas = []) {
+export function initLancamentos(lancamentos, extratoTransacoes = [], _assinaturas = [], _despesasFixas = [], context = {}) {
   // Normaliza extrato para o mesmo formato dos lançamentos do cartão
   const extratoNorm = extratoTransacoes.map(t => enriquecerCanal({
     ...t,
@@ -36,9 +37,10 @@ export function initLancamentos(lancamentos, extratoTransacoes = [], _assinatura
   }));
 
   const cartaoNorm = lancamentos.map(l => enriquecerCanal({ ...l, source: 'cartao' }));
+  const contextRows = (context.registratoContextRows || []).map(item => ({ ...item }));
 
   // Mescla e ordena por data decrescente
-  _lancamentos = [...cartaoNorm, ...extratoNorm].sort((a, b) => parseDataTs(b.data) - parseDataTs(a.data));
+  _lancamentos = [...cartaoNorm, ...extratoNorm, ...contextRows].sort((a, b) => parseDataTs(b.data) - parseDataTs(a.data));
 
   const cats = [...new Set(_lancamentos.map(l => l.cat))].sort();
   const sel = document.getElementById('filterCat');
@@ -62,7 +64,8 @@ export function initLancamentos(lancamentos, extratoTransacoes = [], _assinatura
 
   bindConvertDialog();
   bindEditDialog();
-  renderLancamentos(_lancamentos);
+  buildLancamentosContextPanel(context.cardBillSummaries || [], contextRows);
+  renderLancamentos(getSortedLancamentos(_lancamentos));
 }
 
 const CAT_COLORS = {
@@ -81,6 +84,7 @@ const CAT_COLORS = {
   'Associação':     { bg: '#1a3320', color: '#9ae6b4', border: '#22543d' },
   'Investimentos':  { bg: '#332200', color: '#d69e2e', border: '#744210' },
   'Transferência':  { bg: '#2d1f40', color: '#b794f4', border: '#553c9a' },
+  'Contexto SCR':   { bg: '#2d1f4f', color: '#d6bcfa', border: '#6b46c1' },
 };
 
 function catBadgeStyle(cat) {
@@ -129,6 +133,7 @@ function calcParcelaAtual(parcela, dataLanc) {
 function renderLancamentos(data) {
   const tbody = document.getElementById('lancamentosTable');
   tbody.innerHTML = '';
+  updateSortButtons();
 
   if (data.length === 0) {
     tbody.innerHTML = `
@@ -145,13 +150,15 @@ function renderLancamentos(data) {
   }
 
   data.forEach((l, i) => {
+    const isContexto   = !!l.contextoDerivado;
     const isParc       = !!l.parcela;
     const isClassificado = !!l.tipo_classificado;
     const isConta      = l.source === 'conta';
+    const isCartao     = l.source === 'cartao';
     const isEntrada    = isConta && l.tipo === 'entrada';
 
     let parcelaHtml = '';
-    if (isParc) {
+    if (isParc && !isContexto) {
       const cp = calcParcelaAtual(l.parcela, l.data);
       if (cp && cp.atual > cp.parcelaDoc) {
         parcelaHtml = `<span class="parcela-badge" style="margin-left:6px">📦 ${cp.parcelaDoc}/${cp.total}<span style="color:#a0aec0;font-size:0.74rem;margin-left:4px">→ ${cp.atual}ª atual</span></span>`;
@@ -162,13 +169,15 @@ function renderLancamentos(data) {
     const descHtml = `${escapeHtml(l.desc)}${parcelaHtml}`;
 
     // Badge de origem
-    const origemBadge = isConta
+    const origemBadge = isContexto
+      ? `<span class="badge badge-purple" style="font-size:0.7rem;margin-left:4px">🏛️ Registrato</span>`
+      : isConta
       ? `<span class="badge" style="background:#1a3535;color:#4fd1c5;border:1px solid #234e52;font-size:0.7rem;margin-left:4px">🏦 Conta</span>`
       : `<span class="badge" style="background:#1a2240;color:#7f9cf5;border:1px solid #3c366b;font-size:0.7rem;margin-left:4px">💳 Cartão</span>`;
-    const canalBadge = buildCanalBadge(l);
+    const canalBadge = isContexto ? '' : buildCanalBadge(l);
 
     // Saídas da conta também são classificáveis (despesa, assinatura etc.)
-    const canClassify = !isConta || l.tipo === 'saida';
+    const canClassify = !isContexto && (!isConta || l.tipo === 'saida');
 
     const classifyHtml = isClassificado
       ? buildTipoBadge(l)
@@ -182,7 +191,7 @@ function renderLancamentos(data) {
           </div>`
         : '';
 
-    const acoesHtml = `
+    const acoesHtml = isContexto ? '' : `
       <div class="row-actions-wrap">
         <div class="row-classify">${classifyHtml}</div>
         <div class="row-edit-del">
@@ -191,30 +200,40 @@ function renderLancamentos(data) {
         </div>
       </div>`;
 
-    // Cor do valor: conta-entrada=verde, conta-saída=vermelho, cartão-parcela=laranja, cartão=padrão
-    const valorColor = isEntrada ? '#68d391' : isConta ? '#fc8181' : isParc ? '#f6ad55' : 'inherit';
-    const valorSign  = isEntrada ? '+' : isConta ? '−' : '';
+    const valorColor = isContexto ? '#b794f4' : isEntrada ? '#68d391' : (isConta || isCartao) ? '#fc8181' : 'inherit';
+    const valorSign  = isEntrada ? '+' : (isConta || isCartao) ? '−' : '';
+    const resumoRegistrato = l.registratoResumo || null;
+    const descricaoFinal = isContexto
+      ? `${descHtml}<div style="font-size:0.78rem;color:#718096;margin-top:4px">${escapeHtml(
+          resumoRegistrato?.semRegistros
+            ? 'Sem operações de crédito nesta competência.'
+            : `Em dia ${fmt(Number(resumoRegistrato?.emDia || 0))} · Vencida ${fmt(Number(resumoRegistrato?.vencida || 0))} · Outros ${fmt(Number(resumoRegistrato?.outrosCompromissos || 0))}`
+        )}</div>`
+      : descHtml;
 
     tbody.innerHTML += `
-      <tr class="${isParc ? 'row-parcela' : ''}${isClassificado ? ' row-classificado' : ''}${isConta ? ' row-conta' : ''}">
+      <tr class="${isParc ? 'row-parcela' : ''}${isClassificado ? ' row-classificado' : ''}${isConta ? ' row-conta' : ''}${isContexto ? ' row-contexto-scr' : ''}">
         <td style="color:#718096">${i + 1}</td>
         <td>${escapeHtml(l.data)}</td>
         <td><span class="badge badge-blue">${escapeHtml(l.fatura)}</span>${origemBadge}</td>
-        <td>${descHtml}</td>
+        <td>${descricaoFinal}</td>
         <td><div class="cell-badges"><span class="badge" style="${catBadgeStyle(l.cat)}">${escapeHtml(l.cat)}</span>${canalBadge}</div></td>
-        <td style="text-align:right;font-weight:600;color:${valorColor}">${valorSign}${fmt(l.valor)}</td>
+        <td style="text-align:right;font-weight:600;color:${valorColor}">${isContexto && resumoRegistrato?.semRegistros ? '—' : `${valorSign}${fmt(l.valor)}`}</td>
         <td style="text-align:right">${acoesHtml}</td>
       </tr>`;
   });
 
-  const nCartao  = data.filter(l => l.source !== 'conta').length;
-  const nConta   = data.filter(l => l.source === 'conta').length;
-  const nParc    = data.filter(l => l.parcela).length;
-  const nClass   = data.filter(l => l.tipo_classificado).length;
+  const reais = data.filter(l => !l.contextoDerivado);
+  const nCartao  = reais.filter(l => l.source === 'cartao').length;
+  const nConta   = reais.filter(l => l.source === 'conta').length;
+  const nParc    = reais.filter(l => l.parcela).length;
+  const nClass   = reais.filter(l => l.tipo_classificado).length;
+  const nScr     = data.filter(l => l.contextoDerivado).length;
   document.getElementById('lancamentosCount').innerHTML =
-    `${data.length} transaç${data.length !== 1 ? 'ões' : 'ão'} &nbsp;·&nbsp; ` +
+    `${reais.length} transaç${reais.length !== 1 ? 'ões' : 'ão'} reais &nbsp;·&nbsp; ` +
     `<span style="color:#7f9cf5">💳 ${nCartao} cartão</span> &nbsp;·&nbsp; ` +
     `<span style="color:#4fd1c5">🏦 ${nConta} conta</span>` +
+    `${nScr ? ` &nbsp;·&nbsp; <span style="color:#b794f4">🏛️ ${nScr} linha(s) SCR</span>` : ''}` +
     `${nParc ? ` &nbsp;·&nbsp; 📦 ${nParc} parcelados` : ''}` +
     `${nClass ? ` &nbsp;·&nbsp; ${nClass} classificados` : ''}`;
 
@@ -236,11 +255,12 @@ export function filterLancamentos() {
     if (cat && l.cat !== cat) return false;
     if (origem && l.source !== origem) return false;
     if (canal && (l.canal || inferirCanal(l)) !== canal) return false;
+    if (l.contextoDerivado) return !tipo;
     if (tipo === 'nao_classificado' && l.tipo_classificado) return false;
     if (tipo && tipo !== 'nao_classificado' && l.tipo_classificado !== tipo) return false;
     return true;
   });
-  renderLancamentos(filtered);
+  renderLancamentos(getSortedLancamentos(filtered));
 }
 
 export function clearLancamentosFilters() {
@@ -254,6 +274,77 @@ export function clearLancamentosFilters() {
   if (filterCanal)  filterCanal.value = '';
   if (filterOrigem) filterOrigem.value = '';
   filterLancamentos();
+}
+
+export function sortLancamentosBy(key) {
+  if (!key) return;
+  _sortState = _sortState.key === key
+    ? { key, direction: _sortState.direction === 'asc' ? 'desc' : 'asc' }
+    : { key, direction: key === 'data' ? 'desc' : 'asc' };
+  filterLancamentos();
+}
+
+function getSortedLancamentos(items) {
+  const sorted = [...items];
+  const direction = _sortState.direction === 'asc' ? 1 : -1;
+
+  sorted.sort((a, b) => {
+    const base = compareLancamentoValues(a, b, _sortState.key);
+    if (base !== 0) return base * direction;
+    return parseDataTs(b?.data) - parseDataTs(a?.data);
+  });
+
+  return sorted;
+}
+
+function compareLancamentoValues(a, b, key) {
+  if (key === 'data') return parseDataTs(a?.data) - parseDataTs(b?.data);
+  if (key === 'fatura') return compareText(a?.fatura, b?.fatura);
+  if (key === 'descricao') return compareText(a?.desc, b?.desc);
+  if (key === 'categoria') return compareText(a?.cat, b?.cat);
+  if (key === 'valor') return Number(a?.valor || 0) - Number(b?.valor || 0);
+  return 0;
+}
+
+function compareText(a, b) {
+  return String(a ?? '').localeCompare(String(b ?? ''), 'pt-BR', { sensitivity: 'base' });
+}
+
+function updateSortButtons() {
+  document.querySelectorAll('[data-sort-lancamentos]').forEach(button => {
+    const key = button.getAttribute('data-sort-lancamentos');
+    const isActive = key === _sortState.key;
+    const arrow = isActive ? (_sortState.direction === 'asc' ? '▲' : '▼') : '↕';
+    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    button.classList.toggle('active', isActive);
+    const label = button.getAttribute('data-sort-label') || button.textContent || '';
+    button.innerHTML = `<span>${escapeHtml(label)}</span><span class="sort-indicator">${arrow}</span>`;
+  });
+}
+
+function buildLancamentosContextPanel(cardBillSummaries, contextRows) {
+  const panel = document.getElementById('lancamentosContextPanel');
+  if (!panel) return;
+
+  if ((!cardBillSummaries || cardBillSummaries.length === 0) && (!contextRows || contextRows.length === 0)) {
+    panel.style.display = 'none';
+    panel.innerHTML = '';
+    return;
+  }
+
+  panel.style.display = '';
+  panel.innerHTML = `
+    <div class="helper-panel-header">
+      <div>
+        <h3>Faturas do cartão + contexto do Registrato</h3>
+        <p>Os gastos reais do cartão continuam nas linhas normais. O SCR entra como linha derivada por competência para ajudar a interpretar compromissos em aberto sem duplicar valores transacionais.</p>
+      </div>
+    </div>
+    <div class="helper-badges">
+      ${cardBillSummaries.slice(0, 6).map(item => `<span class="badge badge-red">💳 ${escapeHtml(item.fatura)} · ${escapeHtml(fmt(item.total))}</span>`).join('')}
+      ${contextRows.length ? `<span class="badge badge-purple">🏛️ ${contextRows.length} competência(s) do SCR refletidas nas faturas importadas</span>` : ''}
+    </div>
+  `;
 }
 
 function bindActionButtons() {

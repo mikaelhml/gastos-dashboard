@@ -10,6 +10,15 @@ const SUMMARY_FIELDS = [
   'limite',
 ];
 
+const SUMMARY_INLINE_PATTERNS = {
+  emDia: /EM DIA\s+R\$\s*([\d.]+,\d{2})/i,
+  vencida: /VENCIDA\s+R\$\s*([\d.]+,\d{2})/i,
+  outrosCompromissos: /OUTROS COMPROMISSOS(?: FINANCEIROS)?\s+R\$\s*([\d.]+,\d{2})/i,
+  creditoALiberar: /CREDITO A LIBERAR\s+R\$\s*([\d.]+,\d{2})/i,
+  coobrigacoes: /COOBRIGACOES\s+R\$\s*([\d.]+,\d{2})/i,
+  limite: /LIMITES? DE CREDITO\s+R\$\s*([\d.]+,\d{2})/i,
+};
+
 const CATEGORY_LABELS = new Map([
   ['EMPRESTIMOS', 'Empréstimos'],
   ['OUTROS CREDITOS', 'Outros créditos'],
@@ -56,7 +65,7 @@ export async function importarRegistratoScr(file, onProgress = () => {}) {
 
   onProgress(30);
 
-  const { linhasRaw, blocosFallback } = await extrairLinhasRegistrato(buffer);
+  const { linhasRaw, blocosFallback, totalPaginas } = await extrairLinhasRegistrato(buffer);
   const linhas = normalizarLinhas(linhasRaw);
   const blocos = separarBlocosMensais(linhas);
   const blocosRegistrato = blocos.length > 0 ? blocos : blocosFallback;
@@ -80,12 +89,25 @@ export async function importarRegistratoScr(file, onProgress = () => {}) {
   const resumosMensais = [];
 
   blocosRegistrato.forEach((bloco, blocoIndex) => {
-    const registros = parsearBlocoMensal(bloco, blocoIndex, file.name, hash);
+    const blocoEnriquecido = {
+      ...bloco,
+      resumoValores: resolverResumoValores(bloco),
+      semRegistros: hasSemRegistrosNotice(bloco),
+    };
+
+    const registros = parsearBlocoMensal(blocoEnriquecido, blocoIndex, file.name, hash);
     const snapshotsDoBloco = registros.length > 0
       ? registros
-      : [criarSnapshotConsolidado(bloco, blocoIndex, file.name, hash)];
-    snapshots.push(...snapshotsDoBloco);
-    resumosMensais.push(criarResumoMensal(bloco, snapshotsDoBloco, file.name, hash));
+      : [criarSnapshotConsolidado(blocoEnriquecido, blocoIndex, file.name, hash)];
+    const snapshotsValidos = snapshotsDoBloco.filter(isRegistratoEntryMeaningful);
+    const resumoMensal = criarResumoMensal(blocoEnriquecido, snapshotsValidos, file.name, hash);
+
+    if (!isRegistratoEntryMeaningful(resumoMensal)) {
+      return;
+    }
+
+    snapshots.push(...snapshotsValidos);
+    resumosMensais.push(resumoMensal);
   });
 
   if (resumosMensais.length === 0) {
@@ -121,7 +143,9 @@ export async function importarRegistratoScr(file, onProgress = () => {}) {
   onProgress(100);
 
   return {
-    importado: snapshots.length,
+    importado: resumosMensais.length,
+    snapshots: snapshots.length,
+    paginas: totalPaginas,
     duplicata: false,
     mes: periodo,
   };
@@ -139,6 +163,7 @@ async function extrairLinhasRegistrato(buffer) {
   return {
     linhasRaw: paginas.flatMap(pagina => montarLinhasPaginaRegistrato(pagina.items ?? [])),
     blocosFallback: extrairBlocosFallbackPorPagina(paginas),
+    totalPaginas: paginas.length,
   };
 }
 
@@ -384,6 +409,7 @@ function criarResumoMensal(bloco, registros, fileName, hash) {
     arquivoOrigem: fileName,
     hash,
     resumoValores: bloco.resumoValores,
+    semRegistros: Boolean(bloco?.semRegistros),
     totalInstituicoes: registros.length,
     totalOperacoes: registros.reduce((sum, item) => sum + item.totalOperacoes, 0),
     detalheLinhas: bloco.detalheLinhas,
@@ -406,6 +432,7 @@ function criarSnapshotConsolidado(bloco, blocoIndex, fileName, hash) {
     detalheLinhas: bloco.detalheLinhas,
     importadoEm: new Date().toISOString(),
     sintetico: true,
+    semRegistros: Boolean(bloco?.semRegistros),
     ...mapValuesToColumns(bloco.resumoValores),
   };
 }
@@ -501,6 +528,52 @@ function extractMoneyValues(line) {
 function parseMoneyLine(line) {
   const match = String(line ?? '').trim().match(MONEY_LINE_RE);
   return match ? parseBRL(match[1]) : NaN;
+}
+
+function resolverResumoValores(bloco) {
+  const resumoOriginal = SUMMARY_FIELDS.map((_, index) => {
+    const value = Number(bloco?.resumoValores?.[index]);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  });
+
+  if (resumoOriginal.some(value => value !== null)) {
+    return resumoOriginal;
+  }
+
+  const text = [
+    ...(Array.isArray(bloco?.detalheLinhas) ? bloco.detalheLinhas : []),
+    String(bloco?.rawText ?? ''),
+  ].join(' ');
+
+  const resumoPorLabels = SUMMARY_FIELDS.map(field => {
+    const match = normalizeForMatch(text).match(SUMMARY_INLINE_PATTERNS[field]);
+    return match ? parseBRL(match[1]) : null;
+  });
+
+  return resumoPorLabels.some(value => Number.isFinite(value) && value > 0)
+    ? resumoPorLabels
+    : resumoOriginal;
+}
+
+function isRegistratoEntryMeaningful(item) {
+  if (!item) return false;
+  if (item?.semRegistros) return true;
+
+  if (Number(item?.totalOperacoes || 0) > 0) return true;
+
+  return SUMMARY_FIELDS.some(field => {
+    const value = Number(item?.[field]);
+    return Number.isFinite(value) && value > 0;
+  });
+}
+
+function hasSemRegistrosNotice(bloco) {
+  const text = [
+    ...(Array.isArray(bloco?.detalheLinhas) ? bloco.detalheLinhas : []),
+    String(bloco?.rawText ?? ''),
+  ].join(' ');
+
+  return normalizeForMatch(text).includes('NAO FORAM ENCONTRADOS REGISTROS DE OPERACOES DE CREDITO EM NOME DO CLIENTE PARA O MES DE REFERENCIA');
 }
 
 function looksLikeInstitutionLine(line) {

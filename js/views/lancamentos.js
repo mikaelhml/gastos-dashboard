@@ -274,6 +274,7 @@ function bindConvertDialog() {
   const form     = document.getElementById('lancamentoConvertForm');
   const cancelTop = document.getElementById('lancamentoConvertCancelTop');
   const cancelBtn = document.getElementById('lancamentoConvertCancel');
+  const submitBtn = document.getElementById('lancamentoConvertSubmit');
   if (!dialog || !form) return;
 
   const close = () => { dialog.close(); setFeedback('', '', 'lancamentoConvertFeedback'); };
@@ -300,6 +301,7 @@ function bindConvertDialog() {
     if (!lancamento) return;
 
     try {
+      toggleConvertSavingState(true);
       if (action === 'assinatura') {
         await addItem('assinaturas', { icon, nome, cat, valor });
       } else if (action === 'despesa') {
@@ -345,13 +347,25 @@ function bindConvertDialog() {
         _lancamentos[idx] = { ..._lancamentos[idx], tipo_classificado: action, classificado_nome: nome };
       }
 
-      setFeedback('Salvo com sucesso!', 'success', 'lancamentoConvertFeedback');
-      setTimeout(() => { close(); renderLancamentos(_lancamentos); window.refreshDashboard?.(); }, 800);
+      close();
+      renderLancamentos(_lancamentos);
+      await window.refreshDashboard?.();
     } catch (err) {
       console.error('[lancamentos] Erro ao converter:', err);
       setFeedback('Erro ao salvar. Tente novamente.', 'error', 'lancamentoConvertFeedback');
+    } finally {
+      toggleConvertSavingState(false);
     }
   });
+
+  function toggleConvertSavingState(isSaving) {
+    if (submitBtn) {
+      submitBtn.disabled = isSaving;
+      submitBtn.textContent = isSaving ? 'Salvando...' : getDialogSubmitLabel(document.getElementById('convertAction')?.value || '');
+    }
+    if (cancelBtn) cancelBtn.disabled = isSaving;
+    if (cancelTop) cancelTop.disabled = isSaving;
+  }
 }
 
 function openConvertDialog(lancamento, action) {
@@ -370,9 +384,9 @@ function openConvertDialog(lancamento, action) {
   document.getElementById('convertObs').value = buildObsBase(lancamento);
 
   const [parcelaAtual, parcelaTotal] = extrairParcelaPadrao(lancamento.parcela, action);
-  document.getElementById('convertPagas').value = parcelaAtual;
-  document.getElementById('convertTotal').value = parcelaTotal;
-  document.getElementById('convertInicio').value = inferirInicioParcelamento(lancamento.data, parcelaAtual);
+  document.getElementById('convertPagas').value = action === 'assinatura' ? '' : parcelaAtual;
+  document.getElementById('convertTotal').value = action === 'assinatura' ? '' : parcelaTotal;
+  document.getElementById('convertInicio').value = action === 'assinatura' ? '' : inferirInicioParcelamento(lancamento.data, parcelaAtual);
 
   const isParcelado = action === 'parcelamento' || action === 'financiamento';
   document.querySelectorAll('.convert-parcelado-field').forEach(el => {

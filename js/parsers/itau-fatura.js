@@ -952,7 +952,7 @@ function parseInstallmentLine(text) {
   if (!valorMatch) return null;
 
   const body = text.slice(0, text.lastIndexOf(valorMatch[0])).trim();
-  const parcelaMatch = [...body.matchAll(/(\d{1,2}\/\d{1,2})/g)].pop();
+  const parcelaMatch = body.match(/\s+(\d{1,2}\/\d{1,2})\s*$/);
   if (!parcelaMatch) return null;
 
   const [atual, total] = parcelaMatch[1].split('/').map(Number);
@@ -973,12 +973,17 @@ function parseInstallmentLine(text) {
   }
 
   desc = sanitizarDescricaoItau(desc);
-  if (!desc || desc.length < 2) return null;
+  if (!desc || desc.length < 2 || !temDescricaoComercialMinima(desc)) return null;
 
   return {
     desc,
     parcela: `${atual}/${total}`,
   };
+}
+
+function temDescricaoComercialMinima(texto) {
+  const somenteLetras = String(texto ?? '').replace(/[^A-Za-zÀ-ÿ]/g, '');
+  return somenteLetras.length >= 3;
 }
 
 function sanitizarDescricaoItau(rawDesc) {

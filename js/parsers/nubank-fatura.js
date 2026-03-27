@@ -252,12 +252,17 @@ function extrairParcelaValida(desc) {
   }
 
   const descSemParcela = desc.slice(0, desc.length - parcelaMatch[0].length).trim();
-  if (descSemParcela.length < 2) return null;
+  if (descSemParcela.length < 2 || !temDescricaoComercialMinima(descSemParcela)) return null;
 
   return {
     parcela: parcelaMatch[1],
     desc: descSemParcela,
   };
+}
+
+function temDescricaoComercialMinima(texto) {
+  const somenteLetras = String(texto ?? '').replace(/[^A-Za-zÀ-ÿ]/g, '');
+  return somenteLetras.length >= 3;
 }
 
 function parseDataFatura(rawData, mesFatura) {

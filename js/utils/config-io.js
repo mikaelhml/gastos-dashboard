@@ -65,7 +65,7 @@ export async function importConfig(file) {
       atuaisAssinaturas.map(item => normalizeKey(item.nome)),
     );
     const descsExistentes = new Set(
-      atuaisDespesas.map(item => normalizeKey(item.desc)),
+      atuaisDespesas.map(item => normalizeKey(item.desc ?? item.nome)),
     );
 
     let importados = 0;
@@ -135,15 +135,53 @@ function normalizeDespesa(item) {
   }
 
   const cat = String(item.cat ?? '').trim();
-  const desc = String(item.desc ?? '').trim();
+  const desc = String(item.desc ?? item.nome ?? '').trim();
   const valor = Number(item.valor);
   const obs = String(item.obs ?? 'Mensal — importado de configuracao').trim() || 'Mensal — importado de configuracao';
+  const parcelas = item.parcelas && typeof item.parcelas === 'object'
+    ? normalizeParcelas(item.parcelas)
+    : (
+        item.tipo && Number.isInteger(Number(item.pagas)) && Number.isInteger(Number(item.total)) && item.inicio
+          ? normalizeParcelas({
+              tipo: item.tipo,
+              pagas: Number(item.pagas),
+              total: Number(item.total),
+              inicio: item.inicio,
+            })
+          : null
+      );
 
   if (!cat || !desc || !Number.isFinite(valor) || valor <= 0) {
     throw new Error(`Despesa fixa invalida: ${desc || '(sem descricao)'}.`);
   }
 
-  return { cat, desc, valor, obs };
+  return { cat, desc, nome: desc, valor, obs, ...(parcelas ? { parcelas } : {}) };
+}
+
+function normalizeParcelas(item) {
+  const tipo = String(item.tipo ?? '').trim();
+  const pagas = Number(item.pagas);
+  const total = Number(item.total);
+  const inicio = String(item.inicio ?? '').trim();
+
+  if (
+    !['parcelamento', 'financiamento'].includes(tipo) ||
+    !Number.isInteger(pagas) ||
+    !Number.isInteger(total) ||
+    pagas < 1 ||
+    total < pagas ||
+    !/^\d{4}-\d{2}$/.test(inicio)
+  ) {
+    throw new Error('Parcelamento/financiamento invalido na despesa fixa.');
+  }
+
+  return {
+    tipo,
+    label: tipo === 'financiamento' ? 'Financiamento' : 'Parcelamento',
+    pagas,
+    total,
+    inicio,
+  };
 }
 
 function normalizeKey(value) {

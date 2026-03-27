@@ -108,7 +108,7 @@ function bindDespesaForm() {
       return;
     }
 
-    await addItem('despesas_fixas', { cat, desc, valor, obs });
+    await addItem('despesas_fixas', { cat, desc, nome: desc, valor, obs });
 
     form.reset();
     setFeedback('despesaFormFeedback', 'Despesa fixa adicionada com sucesso.', 'success');

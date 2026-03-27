@@ -80,11 +80,34 @@ async function loadDashboardData() {
   return {
     assinaturas,
     observacoes,
-    despesasFixas,
+    despesasFixas: despesasFixas.map(normalizeDespesaFixa),
     lancamentos,
     extratoTransacoes,
     extratoSummary,
     orcamentos,
+  };
+}
+
+function normalizeDespesaFixa(item) {
+  const desc = String(item?.desc ?? item?.nome ?? '').trim();
+  const nome = String(item?.nome ?? item?.desc ?? '').trim();
+  const parcelas = item?.parcelas ?? (
+    item?.tipo && Number.isInteger(Number(item?.pagas)) && Number.isInteger(Number(item?.total)) && item?.inicio
+      ? {
+          tipo: item.tipo,
+          label: item.tipo === 'financiamento' ? 'Financiamento' : 'Parcelamento',
+          pagas: Number(item.pagas),
+          total: Number(item.total),
+          inicio: item.inicio,
+        }
+      : null
+  );
+
+  return {
+    ...item,
+    desc,
+    nome,
+    parcelas,
   };
 }
 

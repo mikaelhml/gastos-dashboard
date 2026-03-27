@@ -8,6 +8,7 @@ const RE_DATA_SLASH = /^\d{2}\/\d{2}(?:\/\d{4})?$/;
 const RE_DATA_PREFIX = /^[^\d]*\d{2}\/\d{2}(?:\/\d{4})?(?:\s|$)/;
 const RE_VALOR_ITEM = /^-?[\d.]{1,10},\d{2}$/;
 const RE_TRANSACAO = /^[^\d]*(\d{2}\/\d{2}(?:\/\d{4})?)\s+(.+?)\s+(-?[\d.]{1,10},\d{2})$/;
+const RE_DESC_INVALIDA = /^-?[\d.]{1,10},\d{2}$/;
 const ITAU_FATURA_PROFILE = {
   DOMESTIC_CLASSIC: 'itau-domestico-classico',
   DOMESTIC_MULTICARD: 'itau-domestico-multicartao',
@@ -415,25 +416,21 @@ function parsearLancamentosItau(linhasColunadas, grupos, linhasRaw, paginas, mes
     return parsearLancamentosItauInternacional(paginas, mesFatura);
   }
 
-  return parsearLancamentosItauDomestico(linhasColunadas, grupos, linhasRaw, paginas, mesFatura);
+  return parsearLancamentosItauDomestico(linhasColunadas, grupos, linhasRaw, paginas, mesFatura, profile);
 }
 
-function parsearLancamentosItauDomestico(linhasColunadas, grupos, linhasRaw, paginas, mesFatura) {
+function parsearLancamentosItauDomestico(linhasColunadas, grupos, linhasRaw, paginas, mesFatura, profile) {
   const colunas = separarPorColuna(linhasColunadas);
-  const directRows = parseTransactionColumnDirect(paginas, mesFatura);
-
-  // Intercala left+right ordenados por page+Y para que cabeçalhos de seção
-  // (geralmente capturados na coluna esquerda, pois são full-width) também
-  // ativem a seção para as transações da coluna direita
-  const mergedRows = [
+  const sectionRows = parseTransactionSections([
     ...colunas.left.map(r => ({ ...r, _col: 0 })),
     ...colunas.right.map(r => ({ ...r, _col: 1 })),
-  // IMPORTANTE: sort descendente por Y porque no PDF y=0 é o fundo da página (y grande = topo).
-  // Ordem correta: page ASC, então y DESC (topo→fundo), col ASC para tiebreak.
-  ].sort((a, b) => a.page !== b.page ? a.page - b.page : a.y !== b.y ? b.y - a.y : a._col - b._col);
+  ].sort((a, b) => a.page !== b.page ? a.page - b.page : a.y !== b.y ? b.y - a.y : a._col - b._col), mesFatura);
+  const directRows = parseTransactionColumnDirect(paginas, mesFatura);
 
-  let rowsCompras = parseTransactionSections(mergedRows, mesFatura);
-  if (directRows.length > rowsCompras.length) {
+  let rowsCompras = sectionRows;
+  if (profile === ITAU_FATURA_PROFILE.DOMESTIC_MULTICARD) {
+    rowsCompras = mergeLancamentos(sectionRows, directRows);
+  } else if (directRows.length > rowsCompras.length) {
     rowsCompras = directRows;
   }
 
@@ -462,10 +459,11 @@ function parsearLancamentosItauDomestico(linhasColunadas, grupos, linhasRaw, pag
   }
 
   return rowsCompras.map(lancamento => {
+    const { _sourceKey, ...cleanLancamento } = lancamento;
     const parcelaInfo = parcelasMap.get(normalizarChaveDescricao(lancamento.desc));
     return parcelaInfo
-      ? { ...lancamento, ...parcelaInfo }
-      : lancamento;
+      ? { ...cleanLancamento, ...parcelaInfo }
+      : cleanLancamento;
   });
 }
 
@@ -514,14 +512,14 @@ function parsearLancamentosItauInternacional(paginas, mesFatura) {
 
       if (!startsWithTransactionDate(text)) continue;
 
-      const parsed = parseTransactionLine(text, mesFatura);
+      const parsed = parseTransactionLine(text, mesFatura, buildSourceKey(row.page, row._col, row.y));
       if (parsed) {
         lancamentos.push(parsed);
       }
     }
   }
 
-  return dedupeLancamentos(lancamentos);
+  return dedupeLancamentos(lancamentos).map(({ _sourceKey, ...item }) => item);
 }
 
 function parseTransactionColumnDirect(paginas, mesFatura) {
@@ -565,7 +563,7 @@ function parseTransactionColumnDirect(paginas, mesFatura) {
 
       if (!active[col] || !text || isIgnorableRow(text)) continue;
 
-      const parsed = parseTransactionLine(text, mesFatura);
+      const parsed = parseTransactionLine(text, mesFatura, buildSourceKey(row.page, row._col, row.y));
       if (parsed) {
         lancamentos.push(parsed);
       }
@@ -639,13 +637,16 @@ function parseTransactionSections(rows, mesFatura) {
     }
 
     if (startsWithTransactionDate(text)) {
-      pendings[col] = text;
+      pendings[col] = {
+        text,
+        sourceKey: buildSourceKey(row.page, row._col, row.y),
+      };
       continue;
     }
 
     if (pendings[col]) {
-      pendings[col] = `${pendings[col]} ${text}`.trim();
-      const parsed = parseTransactionLine(pendings[col], mesFatura);
+      pendings[col].text = `${pendings[col].text} ${text}`.trim();
+      const parsed = parseTransactionLine(pendings[col].text, mesFatura, pendings[col].sourceKey);
       if (parsed) {
         lancamentos.push(parsed);
         foundAnyTransaction = true;
@@ -654,7 +655,7 @@ function parseTransactionSections(rows, mesFatura) {
       continue;
     }
 
-    const parsed = parseTransactionLine(text, mesFatura);
+    const parsed = parseTransactionLine(text, mesFatura, buildSourceKey(row.page, row._col, row.y));
     if (parsed) {
       lancamentos.push(parsed);
       foundAnyTransaction = true;
@@ -770,13 +771,16 @@ function parseTransactionFallback(rows, mesFatura) {
     }
 
     if (startsWithTransactionDate(text)) {
-      pending = text;
+      pending = {
+        text,
+        sourceKey: buildSourceKey(row.page, 0, row.y),
+      };
       continue;
     }
 
     if (pending) {
-      pending = `${pending} ${text}`.trim();
-      const parsed = parseTransactionLine(pending, mesFatura);
+      pending.text = `${pending.text} ${text}`.trim();
+      const parsed = parseTransactionLine(pending.text, mesFatura, pending.sourceKey);
       if (parsed) {
         lancamentos.push(parsed);
         pending = null;
@@ -784,7 +788,7 @@ function parseTransactionFallback(rows, mesFatura) {
       continue;
     }
 
-    const parsed = parseTransactionLine(text, mesFatura);
+    const parsed = parseTransactionLine(text, mesFatura, buildSourceKey(row.page, 0, row.y));
     if (parsed) {
       lancamentos.push(parsed);
     }
@@ -811,7 +815,11 @@ function parseTransactionRawGroupFallback(grupos, mesFatura) {
     const desc = sanitizarDescricaoItau(itens.slice(dataIndex + 1, valorIndex).join(' '));
     if (!desc || desc.length < 2) continue;
 
-    const parsed = parseTransactionLine(`${itens[dataIndex]} ${desc} ${itens[valorIndex]}`, mesFatura);
+    const parsed = parseTransactionLine(
+      `${itens[dataIndex]} ${desc} ${itens[valorIndex]}`,
+      mesFatura,
+      buildSourceKey(grupo[0]?.page ?? 1, 0, grupo[0]?.y ?? dataIndex)
+    );
     if (parsed) {
       lancamentos.push(parsed);
     }
@@ -853,7 +861,11 @@ function parseTransactionSlidingGroupFallback(grupos, mesFatura) {
         consumedEnd = j;
       }
 
-      const parsed = parseTransactionTokens(buffer, mesFatura);
+      const parsed = parseTransactionTokens(
+        buffer,
+        mesFatura,
+        buildSourceKey(current.page, 0, i)
+      );
       if (parsed) {
         lancamentos.push(parsed);
         i = consumedEnd;
@@ -865,7 +877,7 @@ function parseTransactionSlidingGroupFallback(grupos, mesFatura) {
   return dedupeLancamentos(lancamentos);
 }
 
-function parseTransactionLine(text, mesFatura) {
+function parseTransactionLine(text, mesFatura, sourceKey = '') {
   const extracted = extractTransactionCandidate(text);
   if (!extracted) return null;
 
@@ -874,7 +886,14 @@ function parseTransactionLine(text, mesFatura) {
   const valor = parseBRL(rawValor);
   const desc = sanitizarDescricaoItau(rawDesc);
 
-  if (!dataInfo || !Number.isFinite(valor) || valor === 0 || !desc || desc.length < 2) {
+  if (
+    !dataInfo ||
+    !Number.isFinite(valor) ||
+    valor === 0 ||
+    !desc ||
+    desc.length < 2 ||
+    RE_DESC_INVALIDA.test(desc)
+  ) {
     return null;
   }
 
@@ -885,6 +904,7 @@ function parseTransactionLine(text, mesFatura) {
     cat: categorizar(desc),
     canal: inferirCanal({ desc, source: 'cartao' }),
     valor,
+    _sourceKey: sourceKey,
   };
 }
 
@@ -902,7 +922,7 @@ function parseTransactionRawLinesFallback(linhas, mesFatura) {
         buffer = `${buffer} ${next}`.trim();
       }
 
-      const parsed = parseTransactionLine(buffer, mesFatura);
+      const parsed = parseTransactionLine(buffer, mesFatura, buildSourceKey(0, 0, i));
       if (parsed) {
         lancamentos.push(parsed);
         i = j;
@@ -914,7 +934,7 @@ function parseTransactionRawLinesFallback(linhas, mesFatura) {
   return dedupeLancamentos(lancamentos);
 }
 
-function parseTransactionTokens(tokens, mesFatura) {
+function parseTransactionTokens(tokens, mesFatura, sourceKey = '') {
   const dataIndex = tokens.findIndex(token => startsWithTransactionDate(token));
   const valorIndex = findLastIndex(tokens, token => RE_VALOR_ITEM.test(token));
   if (dataIndex < 0 || valorIndex <= dataIndex) return null;
@@ -924,7 +944,7 @@ function parseTransactionTokens(tokens, mesFatura) {
   const rawDesc = tokens.slice(dataIndex + 1, valorIndex).join(' ').trim();
   if (!rawDesc) return null;
 
-  return parseTransactionLine(`${rawData} ${rawDesc} ${rawValor}`, mesFatura);
+  return parseTransactionLine(`${rawData} ${rawDesc} ${rawValor}`, mesFatura, sourceKey);
 }
 
 function parseInstallmentLine(text) {
@@ -1031,11 +1051,19 @@ function limparRuidoEstruturalLinha(text) {
 function dedupeLancamentos(lancamentos) {
   const seen = new Set();
   return lancamentos.filter(item => {
-    const key = `${item.data}|${item.desc}|${item.valor.toFixed(2)}`;
+    const key = item._sourceKey || `${item.data}|${item.desc}|${item.valor.toFixed(2)}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+}
+
+function mergeLancamentos(...grupos) {
+  return dedupeLancamentos(grupos.flat());
+}
+
+function buildSourceKey(page, col, rowRef) {
+  return `${page ?? 0}|${col ?? 0}|${rowRef ?? 0}`;
 }
 
 function matchesAny(text, patterns) {

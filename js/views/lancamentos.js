@@ -303,17 +303,33 @@ function bindConvertDialog() {
       if (action === 'assinatura') {
         await addItem('assinaturas', { icon, nome, cat, valor });
       } else if (action === 'despesa') {
-        await addItem('despesas_fixas', { icon, nome, cat, valor, obs });
+        await addItem('despesas_fixas', { icon, nome, desc: nome, cat, valor, obs });
       } else if (action === 'parcelamento') {
         const pagas = parseInt(document.getElementById('convertPagas').value, 10) || 1;
         const total = parseInt(document.getElementById('convertTotal').value, 10) || 12;
         const inicio = document.getElementById('convertInicio').value || inferirInicioParcelamento(lancamento.data, pagas);
-        await addItem('despesas_fixas', { icon, nome, cat, valor, obs, tipo: 'parcelamento', pagas, total, inicio });
+        await addItem('despesas_fixas', {
+          icon,
+          nome,
+          desc: nome,
+          cat,
+          valor,
+          obs,
+          parcelas: { tipo: 'parcelamento', label: 'Parcelamento', pagas, total, inicio },
+        });
       } else if (action === 'financiamento') {
         const pagas = parseInt(document.getElementById('convertPagas').value, 10) || 1;
         const total = parseInt(document.getElementById('convertTotal').value, 10) || 48;
         const inicio = document.getElementById('convertInicio').value || inferirInicioParcelamento(lancamento.data, pagas);
-        await addItem('despesas_fixas', { icon, nome, cat, valor, obs, tipo: 'financiamento', pagas, total, inicio });
+        await addItem('despesas_fixas', {
+          icon,
+          nome,
+          desc: nome,
+          cat,
+          valor,
+          obs,
+          parcelas: { tipo: 'financiamento', label: 'Financiamento', pagas, total, inicio },
+        });
       }
 
       const store = getStore(lancamento);

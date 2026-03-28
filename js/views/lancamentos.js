@@ -1,8 +1,14 @@
 import { fmt } from '../utils/formatters.js';
-import { addItem, putItem, deleteItem } from '../db.js';
+import { addItem, putItem, deleteItem, getAll } from '../db.js';
 import { escapeHtml } from '../utils/dom.js';
 import { enriquecerCanal, getCanalMeta, inferirCanal, listarCanais } from '../utils/transaction-tags.js';
-import { buildCategoryMemoryRecord, normalizeCategoryText, sortCategorizationRules } from '../utils/categorization-engine.js';
+import {
+  buildCategoryMemoryRecord,
+  buildCategorizationRuntime,
+  buildRecategorizedRowPatches,
+  normalizeCategoryText,
+  sortCategorizationRules,
+} from '../utils/categorization-engine.js';
 
 let _lancamentos = [];
 let _dialogBound = false;
@@ -454,6 +460,49 @@ function getCategorizationRuleCategoryValue() {
   return normalizeCategoryText(selectEl.value || '');
 }
 
+async function recategorizePersistedImportsFromRules() {
+  const [rules, memories, cardRows, accountRows] = await Promise.all([
+    getAll('categorizacao_regras'),
+    getAll('categorizacao_memoria'),
+    getAll('lancamentos'),
+    getAll('extrato_transacoes'),
+  ]);
+
+  const runtime = buildCategorizationRuntime({ rules, memories });
+  const cardPatches = buildRecategorizedRowPatches(cardRows, runtime, {
+    source: 'cartao',
+    direction: 'saida',
+  });
+  const accountPatches = buildRecategorizedRowPatches(accountRows, runtime, {
+    source: 'conta',
+    direction: row => row?.tipo === 'entrada' ? 'entrada' : 'saida',
+  });
+
+  await Promise.all([
+    ...cardPatches.map(item => putItem('lancamentos', item)),
+    ...accountPatches.map(item => putItem('extrato_transacoes', item)),
+  ]);
+
+  return {
+    totalChanged: cardPatches.length + accountPatches.length,
+    cardChanged: cardPatches.length,
+    accountChanged: accountPatches.length,
+  };
+}
+
+function appendRecategorizationMessage(message, recategorizationResult = {}) {
+  const totalChanged = Number(recategorizationResult?.totalChanged || 0);
+  if (!totalChanged) {
+    return `${message} Nenhum lançamento existente precisou ser reclassificado.`;
+  }
+
+  const details = [];
+  if (recategorizationResult.cardChanged) details.push(`${recategorizationResult.cardChanged} de cartão`);
+  if (recategorizationResult.accountChanged) details.push(`${recategorizationResult.accountChanged} de conta`);
+
+  return `${message} ${totalChanged} lançamento(s) existente(s) reclassificado(s)${details.length ? ` (${details.join(' · ')})` : ''}.`;
+}
+
 function bindCategorizationDialog() {
   if (_categorizationDialogBound) return;
   _categorizationDialogBound = true;
@@ -537,10 +586,11 @@ function bindCategorizationDialog() {
     } else {
       await addItem('categorizacao_regras', payload);
     }
+    const recategorizationResult = await recategorizePersistedImportsFromRules();
 
     resetCategorizationRuleForm();
     close();
-    await refreshFromDb('Regra de categorização salva.', false);
+    await refreshFromDb(appendRecategorizationMessage('Regra de categorização salva.', recategorizationResult), false);
   });
 
   rulesList.addEventListener('click', async event => {
@@ -560,13 +610,17 @@ function bindCategorizationDialog() {
     if (action === 'delete') {
       if (!confirm(`Excluir a regra "${rule.pattern}"?`)) return;
       await deleteItem('categorizacao_regras', rule.id);
-      await refreshFromDb('Regra removida.');
+      const recategorizationResult = await recategorizePersistedImportsFromRules();
+      await refreshFromDb(appendRecategorizationMessage('Regra removida.', recategorizationResult));
       return;
     }
 
     if (action === 'toggle') {
       await putItem('categorizacao_regras', { ...rule, enabled: rule.enabled === false });
-      await refreshFromDb(rule.enabled === false ? 'Regra ativada.' : 'Regra pausada.');
+      const recategorizationResult = await recategorizePersistedImportsFromRules();
+      await refreshFromDb(
+        appendRecategorizationMessage(rule.enabled === false ? 'Regra ativada.' : 'Regra pausada.', recategorizationResult),
+      );
       return;
     }
 
@@ -585,7 +639,8 @@ function bindCategorizationDialog() {
       for (const item of normalizedOrder) {
         await putItem('categorizacao_regras', item);
       }
-      await refreshFromDb('Prioridade da regra atualizada.');
+      const recategorizationResult = await recategorizePersistedImportsFromRules();
+      await refreshFromDb(appendRecategorizationMessage('Prioridade da regra atualizada.', recategorizationResult));
     }
   });
 

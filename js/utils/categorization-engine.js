@@ -181,3 +181,14 @@ export function applyCategorizationToImportedRows(rows = [], runtime = {}, optio
     };
   });
 }
+
+export function buildRecategorizedRowPatches(rows = [], runtime = {}, options = {}) {
+  const recategorizedRows = applyCategorizationToImportedRows(rows, runtime, options);
+
+  return recategorizedRows.filter((row, index) => {
+    const previousRow = rows[index] || {};
+    return previousRow.cat !== row.cat
+      || (previousRow.cat_origem ?? null) !== (row.cat_origem ?? null)
+      || (previousRow.cat_regra_id ?? null) !== (row.cat_regra_id ?? null);
+  });
+}

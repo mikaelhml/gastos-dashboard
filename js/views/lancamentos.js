@@ -1,7 +1,9 @@
 import { fmt } from '../utils/formatters.js';
+import { buildTransactionsCsv, downloadTransactionsCsv } from '../utils/transaction-export.js';
 import { addItem, putItem, deleteItem, getAll } from '../db.js';
 import { escapeHtml } from '../utils/dom.js';
 import { enriquecerCanal, getCanalMeta, inferirCanal, listarCanais } from '../utils/transaction-tags.js';
+import { buildEmptyStateViewModels } from '../utils/empty-states.js';
 import {
   applyCategorizationToImportedRows,
   buildCategoryMemoryRecord,
@@ -12,6 +14,7 @@ import {
 } from '../utils/categorization-engine.js';
 
 let _lancamentos = [];
+let _currentDisplayedRows = [];
 let _dialogBound = false;
 let _editDialogBound = false;
 let _categorizationDialogBound = false;
@@ -19,6 +22,7 @@ let _analyticsChart = null;
 let _sortState = { key: 'data', direction: 'desc' };
 let _categorizationRules = [];
 let _categorizationMemories = [];
+let _firstRunLancamentosModel = null;
 const ANALYTICS_COLORS = ['#fc8181', '#63b3ed', '#68d391', '#f6e05e', '#b794f4', '#f6ad55', '#76e4f7', '#fbb6ce', '#90cdf4', '#a0aec0'];
 
 function parseDataTs(data) {
@@ -59,9 +63,28 @@ export function initLancamentos(lancamentos, extratoTransacoes = [], _assinatura
     ...memory,
     enabled: memory?.enabled !== false,
   }));
+  const emptyStates = buildEmptyStateViewModels({
+    importedTransactionCount: cartaoNorm.length + extratoNorm.length,
+    manualSubscriptionCount: _assinaturas?.length || 0,
+    manualFixedExpenseCount: _despesasFixas?.length || 0,
+  });
+  _firstRunLancamentosModel = emptyStates.transactions.shouldRender ? emptyStates.transactions : null;
 
   // Mescla e ordena por data decrescente
   _lancamentos = [...cartaoNorm, ...extratoNorm, ...contextRows].sort((a, b) => parseDataTs(b.data) - parseDataTs(a.data));
+
+  toggleLancamentosSections(!_firstRunLancamentosModel);
+  renderLancamentosEmptyState(_firstRunLancamentosModel);
+
+  if (_firstRunLancamentosModel) {
+    if (_analyticsChart) {
+      _analyticsChart.destroy();
+      _analyticsChart = null;
+    }
+    const count = document.getElementById('lancamentosCount');
+    if (count) count.innerHTML = '';
+    return;
+  }
 
   refreshLancamentosFilterOptions(document.getElementById('filterCat')?.value || '');
 
@@ -83,10 +106,78 @@ export function initLancamentos(lancamentos, extratoTransacoes = [], _assinatura
   bindConvertDialog();
   bindEditDialog();
   bindCategorizationDialog();
+  bindExportButton();
   renderLancamentosAnalytics(context.analytics || null);
   buildLancamentosContextPanel(context.cardBillSummaries || [], contextRows);
   renderCategorizationPanel();
   renderLancamentos(getSortedLancamentos(_lancamentos));
+}
+
+function toggleLancamentosSections(visible) {
+  const display = visible ? '' : 'none';
+  [
+    'lancamentosAnalyticsPanel',
+    'lancamentosContextPanel',
+    'lancamentosCategorizationPanel',
+    'lancamentosFilters',
+    'lancamentosTableWrap',
+    'lancamentosCount',
+  ].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = display;
+  });
+}
+
+function renderLancamentosEmptyState(model) {
+  const host = document.getElementById('lancamentosEmptyState');
+  if (!host) return;
+
+  if (!model?.shouldRender) {
+    host.innerHTML = '';
+    host.style.display = 'none';
+    return;
+  }
+
+  host.innerHTML = buildGuidedEmptyMarkup(model, 'Lançamentos reais');
+  host.style.display = '';
+  bindGuidedEmptyActions(host);
+}
+
+function buildGuidedEmptyMarkup(model, badge) {
+  return `
+    <div class="guided-empty-state">
+      <div class="guided-empty-state-header">
+        <div>
+          <h3>${escapeHtml(model.title || '')}</h3>
+          <p>${escapeHtml(model.body || '')}</p>
+        </div>
+        <div class="guided-empty-state-badge">${escapeHtml(badge)}</div>
+      </div>
+      <div class="guided-empty-state-actions">
+        ${(model.actions || []).map(action => `
+          <button
+            type="button"
+            class="${action.intent === 'importar' ? 'btn-primary' : 'btn-inline-secondary'}"
+            data-empty-state-intent="${escapeHtml(action.intent)}"
+            data-empty-state-tab="${escapeHtml(action.tab)}"
+          >${escapeHtml(action.label)}</button>
+        `).join('')}
+      </div>
+    </div>`;
+}
+
+function bindGuidedEmptyActions(container) {
+  container.querySelectorAll('[data-empty-state-tab]').forEach(button => {
+    button.addEventListener('click', () => {
+      const tab = button.getAttribute('data-empty-state-tab');
+      const intent = button.getAttribute('data-empty-state-intent');
+      if (!tab) return;
+      window.switchTab?.(null, tab);
+      if (intent === 'restaurar-backup') {
+        document.getElementById('fullBackupImportBtn')?.click();
+      }
+    });
+  });
 }
 
 const CAT_COLORS = {
@@ -152,6 +243,11 @@ function calcParcelaAtual(parcela, dataLanc) {
 }
 
 function renderLancamentos(data) {
+  _currentDisplayedRows = data;
+  const realCount = data.filter(r => !r.contextoDerivado).length;
+  const scope = document.getElementById('lancamentosExportScope');
+  if (scope) scope.textContent = `${realCount} transaç${realCount !== 1 ? 'ões' : 'ão'} filtrada${realCount !== 1 ? 's' : ''}`;
+
   const tbody = document.getElementById('lancamentosTable');
   tbody.innerHTML = '';
   updateSortButtons();
@@ -234,13 +330,13 @@ function renderLancamentos(data) {
 
     tbody.innerHTML += `
       <tr class="${isParc ? 'row-parcela' : ''}${isClassificado ? ' row-classificado' : ''}${isConta ? ' row-conta' : ''}${isContexto ? ' row-contexto-scr' : ''}">
-        <td style="color:#718096">${i + 1}</td>
-        <td>${escapeHtml(l.data)}</td>
-        <td><span class="badge badge-blue">${escapeHtml(l.fatura)}</span>${origemBadge}</td>
-        <td>${descricaoFinal}</td>
-        <td><div class="cell-badges"><span class="badge" style="${catBadgeStyle(l.cat)}">${escapeHtml(l.cat)}</span>${canalBadge}</div></td>
-        <td style="text-align:right;font-weight:600;color:${valorColor}">${isContexto && resumoRegistrato?.semRegistros ? '—' : `${valorSign}${fmt(l.valor)}`}</td>
-        <td style="text-align:right">${acoesHtml}</td>
+        <td data-label="#" style="color:#718096">${i + 1}</td>
+        <td data-label="Data">${escapeHtml(l.data)}</td>
+        <td data-label="Fatura/Mês"><span class="badge badge-blue">${escapeHtml(l.fatura)}</span>${origemBadge}</td>
+        <td data-label="Descrição">${descricaoFinal}</td>
+        <td data-label="Categoria"><div class="cell-badges"><span class="badge" style="${catBadgeStyle(l.cat)}">${escapeHtml(l.cat)}</span>${canalBadge}</div></td>
+        <td data-label="Valor" style="text-align:right;font-weight:600;color:${valorColor}">${isContexto && resumoRegistrato?.semRegistros ? '—' : `${valorSign}${fmt(l.valor)}`}</td>
+        <td data-label="Ações" style="text-align:right">${acoesHtml}</td>
       </tr>`;
   });
 
@@ -552,6 +648,19 @@ function appendRecategorizationMessage(message, recategorizationResult = {}) {
   if (recategorizationResult.accountChanged) details.push(`${recategorizationResult.accountChanged} de conta`);
 
   return `${message} ${totalChanged} lançamento(s) existente(s) reclassificado(s)${details.length ? ` (${details.join(' · ')})` : ''}.`;
+}
+
+function bindExportButton() {
+  const btn   = document.getElementById('lancamentosExportCsvBtn');
+  const scope = document.getElementById('lancamentosExportScope');
+  if (!btn || btn.dataset.exportBound) return;
+  btn.dataset.exportBound = '1';
+  btn.addEventListener('click', () => {
+    const csv     = buildTransactionsCsv(_currentDisplayedRows);
+    const now     = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    downloadTransactionsCsv(csv, `lancamentos_${now}.csv`);
+    if (scope) scope.textContent = `${_currentDisplayedRows.filter(r => !r.contextoDerivado).length} transações exportadas`;
+  });
 }
 
 function bindCategorizationDialog() {

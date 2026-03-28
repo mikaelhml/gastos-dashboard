@@ -1,6 +1,7 @@
 import { fmt } from '../utils/formatters.js';
 import { escapeHtml } from '../utils/dom.js';
 import { enriquecerCanal, getCanalMeta, inferirCanal, listarCanais } from '../utils/transaction-tags.js';
+import { buildEmptyStateViewModels } from '../utils/empty-states.js';
 
 let _transacoes = [];
 let _chartCategorias = null;
@@ -18,12 +19,116 @@ export function initExtrato(transacoes, extratoSummary, context = {}) {
   const contextRows = (context.registratoContextRows || []).map(item => ({ ...item }));
   _transacoes = [...transacoesConta, ...contextRows].sort(compareExtratoItems);
   const summaryReal = extratoSummary.filter(m => !m.apenasHistorico);
+  const emptyStates = buildEmptyStateViewModels({
+    importedTransactionCount: transacoesConta.length,
+    importedSummaryCount: summaryReal.length,
+    manualSubscriptionCount: Number(context.manualSubscriptionCount || 0),
+    manualFixedExpenseCount: Number(context.manualFixedExpenseCount || 0),
+  });
+
+  if (emptyStates.statement.shouldRender) {
+    destroyExtratoCharts();
+    toggleExtratoSections(false);
+    renderExtratoEmptyState(emptyStates.statement);
+    const count = document.getElementById('extratoCount');
+    if (count) count.innerHTML = '';
+    return;
+  }
+
+  toggleExtratoSections(true);
+  renderExtratoEmptyState(null);
 
   buildExtratoSummaryBar(transacoesConta, summaryReal);
   buildExtratoCharts(transacoesConta, summaryReal);
   buildExtratoFixosTable(transacoesConta, summaryReal);
   buildExtratoContextPanel(context.cardBillSummaries || [], context.registratoInsights || null, contextRows);
   renderExtrato(_transacoes);
+}
+
+function destroyExtratoCharts() {
+  if (_chartCategorias) {
+    _chartCategorias.destroy();
+    _chartCategorias = null;
+  }
+  if (_chartBarrasCategorias) {
+    _chartBarrasCategorias.destroy();
+    _chartBarrasCategorias = null;
+  }
+  if (_chartCanais) {
+    _chartCanais.destroy();
+    _chartCanais = null;
+  }
+}
+
+function toggleExtratoSections(visible) {
+  const display = visible ? '' : 'none';
+  [
+    'extratoSummaryBar',
+    'extratoContextPanel',
+    'extratoChartsPrimary',
+    'extratoChartsSecondary',
+    'extratoFixosTitle',
+    'extratoFixosWrap',
+    'extratoMovimentosTitle',
+    'extratoFilters',
+    'extratoTableWrap',
+    'extratoCount',
+  ].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = display;
+  });
+}
+
+function renderExtratoEmptyState(model) {
+  const host = document.getElementById('extratoEmptyState');
+  if (!host) return;
+
+  if (!model?.shouldRender) {
+    host.innerHTML = '';
+    host.style.display = 'none';
+    return;
+  }
+
+  host.innerHTML = buildGuidedEmptyMarkup(model, 'Extrato local');
+  host.style.display = '';
+  bindGuidedEmptyActions(host);
+}
+
+function buildGuidedEmptyMarkup(model, badge) {
+  return `
+    <div class="guided-empty-state">
+      <div class="guided-empty-state-header">
+        <div>
+          <h3>${escapeHtml(model.title || '')}</h3>
+          <p>${escapeHtml(model.body || '')}</p>
+        </div>
+        <div class="guided-empty-state-badge">${escapeHtml(badge)}</div>
+      </div>
+      <div class="guided-empty-state-actions">
+        ${(model.actions || []).map(action => `
+          <button
+            type="button"
+            class="${action.intent === 'importar' ? 'btn-primary' : 'btn-inline-secondary'}"
+            data-empty-state-intent="${escapeHtml(action.intent)}"
+            data-empty-state-tab="${escapeHtml(action.tab)}"
+          >${escapeHtml(action.label)}</button>
+        `).join('')}
+      </div>
+    </div>`;
+}
+
+function bindGuidedEmptyActions(container) {
+  container.querySelectorAll('[data-empty-state-tab]').forEach(button => {
+    button.addEventListener('click', () => {
+      const tab = button.getAttribute('data-empty-state-tab');
+      const intent = button.getAttribute('data-empty-state-intent');
+      if (!tab) return;
+      window.switchTab?.(null, tab);
+      if (intent === 'restaurar-backup') {
+        document.getElementById('fullBackupImportBtn')?.click();
+      }
+    });
+  });
 }
 
 function buildExtratoSummaryBar(transacoes, summaryReal) {
@@ -229,15 +334,15 @@ function renderExtrato(data) {
 
         tbody.innerHTML += `
           <tr class="row-contexto-scr">
-            <td style="color:#718096">${i + 1}</td>
-            <td>${escapeHtml(t.data)}</td>
-            <td><span class="badge badge-purple">${escapeHtml(t.mes || '—')}</span></td>
-            <td>
+            <td data-label="#" style="color:#718096">${i + 1}</td>
+            <td data-label="Data">${escapeHtml(t.data)}</td>
+            <td data-label="Mês"><span class="badge badge-purple">${escapeHtml(t.mes || '—')}</span></td>
+            <td data-label="Descrição">
               <div style="font-weight:600;color:#b794f4">${escapeHtml(t.desc)}</div>
               <div style="font-size:0.78rem;color:#718096;margin-top:4px">${escapeHtml(detalhamento)}</div>
             </td>
-            <td><div class="cell-badges"><span class="badge badge-purple">🏛️ ${escapeHtml(t.cat || 'Contexto SCR')}</span></div></td>
-            <td style="text-align:right;font-weight:600;color:#b794f4">${resumo.semRegistros ? '—' : fmt(Number(t.valor || 0))}</td>
+            <td data-label="Categoria"><div class="cell-badges"><span class="badge badge-purple">🏛️ ${escapeHtml(t.cat || 'Contexto SCR')}</span></div></td>
+            <td data-label="Valor" style="text-align:right;font-weight:600;color:#b794f4">${resumo.semRegistros ? '—' : fmt(Number(t.valor || 0))}</td>
           </tr>`;
         return;
       }
@@ -252,12 +357,12 @@ function renderExtrato(data) {
       const canalBadge = `<span class="badge ${canalMeta.badgeClass}">${canalMeta.icon} ${canalMeta.label}</span>`;
       tbody.innerHTML += `
         <tr>
-          <td style="color:#718096">${i + 1}</td>
-          <td>${t.data}</td>
-          <td><span class="badge badge-blue">${t.mes}</span> ${bancoBadge}</td>
-          <td>${t.desc}</td>
-          <td><div class="cell-badges"><span class="badge ${isEntrada ? 'badge-green' : 'badge-red'}">${t.cat}</span>${canalBadge}</div></td>
-          <td style="text-align:right;font-weight:600;color:${color}">${sign} ${fmt(t.valor)}</td>
+          <td data-label="#" style="color:#718096">${i + 1}</td>
+          <td data-label="Data">${t.data}</td>
+          <td data-label="Mês"><span class="badge badge-blue">${t.mes}</span> ${bancoBadge}</td>
+          <td data-label="Descrição">${t.desc}</td>
+          <td data-label="Categoria"><div class="cell-badges"><span class="badge ${isEntrada ? 'badge-green' : 'badge-red'}">${t.cat}</span>${canalBadge}</div></td>
+          <td data-label="Valor" style="text-align:right;font-weight:600;color:${color}">${sign} ${fmt(t.valor)}</td>
         </tr>`;
     });
   }

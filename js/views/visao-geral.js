@@ -1,5 +1,6 @@
 import { fmt } from '../utils/formatters.js';
 import { escapeHtml } from '../utils/dom.js';
+import { buildEmptyStateViewModels } from '../utils/empty-states.js';
 
 let _chartDespesas = null;
 let _chartSubs     = null;
@@ -18,24 +19,56 @@ const CAT_PALETTE = [
 export function buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, transacoes, lancamentos = [], registratoInsights = null, cardBillSummaries = []) {
   const totals      = calcTotals(assinaturas, despesasFixas);
   const summaryReal = extratoSummary.filter(m => !m.apenasHistorico);
+  const emptyStates = buildEmptyStateViewModels({
+    importedTransactionCount: (transacoes?.length || 0) + (lancamentos?.length || 0),
+    importedSummaryCount: summaryReal.length,
+    manualSubscriptionCount: assinaturas?.length || 0,
+    manualFixedExpenseCount: despesasFixas?.length || 0,
+  });
 
   buildTopSummaryCards(totals, despesasFixas, lancamentos, cardBillSummaries);
   buildCharts(assinaturas, despesasFixas);
   buildNewKpiCards(summaryReal, lancamentos, registratoInsights);
   buildRenovacaoAlerta(assinaturas);
 
-  if (summaryReal.length > 0) {
+  if (emptyStates.overview.shouldRender) {
+    destroyOverviewHistoryCharts();
+    toggleOverviewHistorySections(false);
+    renderOverviewEmptyState(emptyStates.overview);
+  } else if (summaryReal.length > 0) {
+    renderOverviewEmptyState(null);
+    toggleOverviewHistorySections(true);
     buildExtratoCards(summaryReal);
     buildFluxoCharts(summaryReal);
     buildUltimoMes(transacoes, summaryReal);
     buildPrevisaoMes(summaryReal, totals);
   } else {
+    renderOverviewEmptyState(null);
+    toggleOverviewSections([
+      'visaoDistribuicaoCharts',
+      'visaoFluxoTitle',
+      'extratoCards',
+      'visaoFluxoCharts',
+      'ultimoMesTitulo',
+      'ultimoMesWrap',
+      'previsaoTitulo',
+      'previsaoWrap',
+      'resumoComprometidoTitulo',
+      'resumoComprometidoWrap',
+    ], true);
     const container = document.getElementById('extratoCards');
     if (container) container.innerHTML = `
       <div class="empty-state">
         <strong>Sem extrato importado ainda</strong>
         Importe PDFs da conta para visualizar fluxo de caixa e saldo por mês.
       </div>`;
+    toggleOverviewSections([
+      'visaoFluxoCharts',
+      'ultimoMesTitulo',
+      'ultimoMesWrap',
+      'previsaoTitulo',
+      'previsaoWrap',
+    ], false);
     const ul = document.getElementById('ultimoMesWrap');
     const pv = document.getElementById('previsaoWrap');
     if (ul) ul.style.display = 'none';
@@ -43,6 +76,99 @@ export function buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, tran
   }
 
   buildResumoTable(totals, assinaturas, despesasFixas);
+}
+
+function destroyOverviewHistoryCharts() {
+  if (_chartFluxo) {
+    _chartFluxo.destroy();
+    _chartFluxo = null;
+  }
+  if (_chartSaldo) {
+    _chartSaldo.destroy();
+    _chartSaldo = null;
+  }
+  if (_chartUltimoMes) {
+    _chartUltimoMes.destroy();
+    _chartUltimoMes = null;
+  }
+}
+
+function toggleOverviewHistorySections(visible) {
+  toggleOverviewSections([
+    'visaoDistribuicaoCharts',
+    'visaoFluxoTitle',
+    'extratoCards',
+    'visaoFluxoCharts',
+    'ultimoMesTitulo',
+    'ultimoMesWrap',
+    'previsaoTitulo',
+    'previsaoWrap',
+    'resumoComprometidoTitulo',
+    'resumoComprometidoWrap',
+  ], visible);
+}
+
+function toggleOverviewSections(ids, visible) {
+  const display = visible ? '' : 'none';
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = display;
+  });
+}
+
+function renderOverviewEmptyState(model) {
+  const host = document.getElementById('visaoEmptyState');
+  if (!host) return;
+
+  if (!model?.shouldRender) {
+    host.innerHTML = '';
+    host.style.display = 'none';
+    return;
+  }
+
+  host.innerHTML = buildGuidedEmptyMarkup(model, {
+    badge: 'Primeiros passos',
+    compact: false,
+  });
+  host.style.display = '';
+  bindGuidedEmptyActions(host);
+}
+
+function buildGuidedEmptyMarkup(model, { badge, compact }) {
+  return `
+    <div class="guided-empty-state${compact ? ' guided-empty-state--compact' : ''}">
+      <div class="guided-empty-state-header">
+        <div>
+          <h3>${escapeHtml(model.title || '')}</h3>
+          <p>${escapeHtml(model.body || '')}</p>
+        </div>
+        <div class="guided-empty-state-badge">${escapeHtml(badge)}</div>
+      </div>
+      <div class="guided-empty-state-actions">
+        ${(model.actions || []).map(action => `
+          <button
+            type="button"
+            class="${action.intent === 'importar' ? 'btn-primary' : 'btn-inline-secondary'}"
+            data-empty-state-intent="${escapeHtml(action.intent)}"
+            data-empty-state-tab="${escapeHtml(action.tab)}"
+          >${escapeHtml(action.label)}</button>
+        `).join('')}
+      </div>
+    </div>`;
+}
+
+function bindGuidedEmptyActions(container) {
+  container.querySelectorAll('[data-empty-state-tab]').forEach(button => {
+    button.addEventListener('click', () => {
+      const tab = button.getAttribute('data-empty-state-tab');
+      const intent = button.getAttribute('data-empty-state-intent');
+      if (!tab) return;
+      window.switchTab?.(null, tab);
+      if (intent === 'restaurar-backup') {
+        document.getElementById('fullBackupImportBtn')?.click();
+      }
+    });
+  });
 }
 
 // ── KPIs extras ──────────────────────────────────────────────────────────────
@@ -413,10 +539,10 @@ function buildResumoTable(totals, assinaturas, despesasFixas) {
 
   tbody.innerHTML = rows.map(r => `
     <tr>
-      <td>${escapeHtml(r.icon)} ${escapeHtml(r.nome)}</td>
-      <td><span class="badge badge-blue" style="font-size:0.7rem">${r.tipo}</span></td>
-      <td style="text-align:right;color:#fc8181">${fmt(r.valor)}</td>
-      <td style="text-align:right;color:#a0aec0">${fmt(r.valor * 12)}</td>
+      <td data-label="Item">${escapeHtml(r.icon)} ${escapeHtml(r.nome)}</td>
+      <td data-label="Tipo"><span class="badge badge-blue" style="font-size:0.7rem">${r.tipo}</span></td>
+      <td data-label="/mês" style="text-align:right;color:#fc8181">${fmt(r.valor)}</td>
+      <td data-label="/ano" style="text-align:right;color:#a0aec0">${fmt(r.valor * 12)}</td>
     </tr>`).join('');
 
   const totalEl = document.getElementById('resumoTotalMes');

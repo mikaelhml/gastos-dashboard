@@ -26,6 +26,20 @@
   <span id="headerPeriodo">Carregando...</span>
 </header>
 
+<nav id="mobileTabNav" class="mobile-tab-nav" aria-label="Navegação rápida">
+  <select id="mobileTabSelect" aria-label="Navegar entre abas" onchange="switchTab(event, this.value)">
+    <option value="visao">📊 Visão Geral</option>
+    <option value="assinaturas">🔁 Assinaturas</option>
+    <option value="despesas">📋 Despesas &amp; Parcelas</option>
+    <option value="lancamentos">🧾 Lançamentos</option>
+    <option value="extrato">🏦 Extrato Conta</option>
+    <option value="projecao">🔮 Projeção</option>
+    <option value="registrato">🏛️ Registrato</option>
+    <option value="importar">📥 Importar</option>
+    <option value="changelog">📋 Novidades</option>
+  </select>
+</nav>
+
 <div class="tabs" role="tablist" aria-label="Navegação principal do dashboard">
   <button type="button" id="tab-button-visao" class="tab active" role="tab" aria-selected="true" aria-controls="tab-visao" onclick="switchTab(event, 'visao')">📊 Visão Geral</button>
   <button type="button" id="tab-button-assinaturas" class="tab" role="tab" aria-selected="false" aria-controls="tab-assinaturas" onclick="switchTab(event, 'assinaturas')">🔁 Assinaturas</button>
@@ -84,7 +98,7 @@
     </div>
   </div>
 
-  <div class="chart-grid">
+  <div class="chart-grid" id="visaoDistribuicaoCharts">
     <div class="chart-box">
       <h3>Distribuição de Despesas Fixas</h3>
       <canvas id="chartDespesas"></canvas>
@@ -102,11 +116,13 @@
     </div>
   </div>
 
+  <div id="visaoEmptyState" class="guided-empty-state-host" style="display:none"></div>
+
   <div id="renovacaoAlerta" style="margin-bottom:24px"></div>
 
-  <div class="section-title">📈 Fluxo de Caixa Real — Conta Nubank</div>
+  <div class="section-title" id="visaoFluxoTitle">📈 Fluxo de Caixa Real — Conta Nubank</div>
   <div class="cards" id="extratoCards"></div>
-  <div class="chart-grid" style="margin-bottom:28px">
+  <div class="chart-grid" id="visaoFluxoCharts" style="margin-bottom:28px">
     <div class="chart-box">
       <h3>Entradas vs Saídas (Conta Nubank)</h3>
       <canvas id="chartFluxo"></canvas>
@@ -127,13 +143,13 @@
     </div>
   </div>
 
-  <div class="section-title">🔮 Previsão para o Mês Corrente</div>
+  <div class="section-title" id="previsaoTitulo">🔮 Previsão para o Mês Corrente</div>
   <div id="previsaoWrap" style="display:none">
     <div class="cards" id="previsaoGrid" style="margin-bottom:28px"></div>
   </div>
 
-  <div class="section-title">📌 Resumo Mensal Comprometido</div>
-  <div class="table-wrap">
+  <div class="section-title" id="resumoComprometidoTitulo">📌 Resumo Mensal Comprometido</div>
+  <div class="table-wrap" id="resumoComprometidoWrap">
     <table>
       <thead>
         <tr><th>Categoria</th><th>Descrição</th><th>Valor/mês</th><th>% do Total</th></tr>
@@ -310,6 +326,7 @@
 
 <!-- ── LANÇAMENTOS─────────────────────────────────────────────────────────── -->
 <div id="tab-lancamentos" class="tab-content" role="tabpanel" aria-labelledby="tab-button-lancamentos">
+  <div id="lancamentosEmptyState" class="guided-empty-state-host" style="display:none"></div>
   <div id="lancamentosAnalyticsPanel" class="helper-panel lancamentos-analytics-panel">
     <div class="helper-panel-header">
       <div>
@@ -349,7 +366,7 @@
     <div id="categorizationRulesSummary" class="helper-badges"></div>
     <div id="categorizationRulesFeedback" class="inline-form-feedback" style="margin-top:12px" aria-live="polite"></div>
   </div>
-  <div class="filters">
+  <div class="filters" id="lancamentosFilters">
     <input type="text" id="searchInput" placeholder="🔍 Buscar por descrição..." aria-label="Buscar lançamentos por descrição" oninput="filterLancamentos()">
     <select id="filterFatura" aria-label="Filtrar lançamentos por fatura" onchange="filterLancamentos()"></select>
     <select id="filterCat" aria-label="Filtrar lançamentos por categoria" onchange="filterLancamentos()"></select>
@@ -373,7 +390,11 @@
     </select>
     <button type="button" class="btn-inline-secondary btn-filter-clear" onclick="clearLancamentosFilters()">Limpar filtros</button>
   </div>
-  <div class="table-wrap">
+  <div class="export-actions" id="lancamentosExportActions">
+    <button type="button" id="lancamentosExportCsvBtn" class="btn-inline-secondary">⬇ Exportar CSV (Excel)</button>
+    <span id="lancamentosExportScope" class="export-scope-label"></span>
+  </div>
+  <div class="table-wrap" id="lancamentosTableWrap">
     <table>
       <thead>
         <tr>
@@ -603,7 +624,8 @@
 
 <!-- ── EXTRATO CONTA───────────────────────────────────────────────────────── -->
 <div id="tab-extrato" class="tab-content" role="tabpanel" aria-labelledby="tab-button-extrato">
-  <div class="summary-bar">
+  <div id="extratoEmptyState" class="guided-empty-state-host" style="display:none"></div>
+  <div class="summary-bar" id="extratoSummaryBar">
     <div class="sb-item"><span class="sb-label">Período:</span><span class="sb-value" id="extratoPeriodo">—</span></div>
     <div class="divider"></div>
     <div class="sb-item"><span class="sb-label">Total entradas:</span><span class="sb-value" id="extratoTotalEntradas">—</span></div>
@@ -614,7 +636,7 @@
   </div>
   <div id="extratoContextPanel" class="helper-panel" style="display:none"></div>
 
-  <div class="chart-grid" style="margin-bottom:24px">
+  <div class="chart-grid" id="extratoChartsPrimary" style="margin-bottom:24px">
     <div class="chart-box">
       <h3>Breakdown Saídas por Categoria (3 meses)</h3>
       <canvas id="chartExtratoCats"></canvas>
@@ -625,23 +647,23 @@
     </div>
   </div>
 
-  <div class="chart-grid" style="margin-bottom:24px">
+  <div class="chart-grid" id="extratoChartsSecondary" style="margin-bottom:24px">
     <div class="chart-box" style="grid-column:span 2">
       <h3>📊 Saídas por Canal / Origem</h3>
       <canvas id="chartExtratoCanal" style="max-height:300px"></canvas>
     </div>
   </div>
 
-  <div class="section-title">🔎 Despesas Fixas Confirmadas (média mensal)</div>
-  <div class="table-wrap" style="margin-bottom:24px">
+  <div class="section-title" id="extratoFixosTitle">🔎 Despesas Fixas Confirmadas (média mensal)</div>
+  <div class="table-wrap" id="extratoFixosWrap" style="margin-bottom:24px">
     <table>
       <thead><tr><th>Categoria</th><th>Descrição</th><th>Dez/2025</th><th>Jan/2026</th><th>Fev/2026</th><th>Média</th></tr></thead>
       <tbody id="extratoFixosTable"></tbody>
     </table>
   </div>
 
-  <div class="section-title">🧾 Todas as Movimentações</div>
-  <div class="filters">
+  <div class="section-title" id="extratoMovimentosTitle">🧾 Todas as Movimentações</div>
+  <div class="filters" id="extratoFilters">
     <input type="text" id="extratoSearch" placeholder="🔍 Buscar..." aria-label="Buscar movimentações do extrato" oninput="filterExtrato()">
     <select id="extratoFilterMes" aria-label="Filtrar extrato por mês" onchange="filterExtrato()"></select>
     <select id="extratoFilterTipo" aria-label="Filtrar extrato por tipo" onchange="filterExtrato()">
@@ -655,7 +677,7 @@
     </select>
     <button type="button" class="btn-inline-secondary btn-filter-clear" onclick="clearExtratoFilters()">Limpar filtros</button>
   </div>
-  <div class="table-wrap">
+  <div class="table-wrap" id="extratoTableWrap">
     <table>
       <thead><tr><th>#</th><th>Data</th><th>Mês</th><th>Descrição</th><th>Categoria / Canal</th><th style="text-align:right">Valor</th></tr></thead>
       <tbody id="extratoTable"></tbody>
@@ -806,6 +828,7 @@
 <!-- ── IMPORTAR ────────────────────────────────────────────────────────────── -->
 <div id="tab-importar" class="tab-content" role="tabpanel" aria-labelledby="tab-button-importar">
   <div class="section-title">📥 Importar PDFs Financeiros</div>
+  <div id="importarFirstStepState" class="guided-empty-state-host" style="display:none"></div>
 
   <!-- Zona de drag & drop -->
   <div class="import-zone" id="dropZone" tabindex="0" role="button" aria-label="Selecionar ou arrastar PDFs financeiros" aria-describedby="importZoneHelp">
@@ -834,6 +857,36 @@
   <!-- Log de importação -->
   <div id="importSummary" class="inline-form-feedback" aria-live="polite"></div>
   <div id="importLog" aria-live="polite"></div>
+
+  <div class="surface-panel privacy-audit-panel">
+    <div class="helper-panel-header">
+      <div>
+        <h3>🔐 Auditoria de privacidade local</h3>
+        <p>
+          Veja o que está salvo no navegador, quando cada origem foi importada pela última vez e quais limites de privacidade são reais hoje.
+        </p>
+      </div>
+      <button type="button" id="privacyAuditOpenBtn" class="btn-primary">
+        🔍 Abrir auditoria
+      </button>
+    </div>
+    <div id="privacyAuditSummary" aria-live="polite"></div>
+  </div>
+
+  <dialog id="privacyAuditDialog" class="app-modal" aria-labelledby="privacyAuditDialogTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div id="privacyAuditDialogTitle" class="modal-title">🔐 Auditoria de privacidade local</div>
+          <div class="modal-subtitle">
+            Baseada apenas nas contagens locais, no histórico de <code>pdfs_importados</code> e na estimativa de armazenamento do próprio navegador.
+          </div>
+        </div>
+        <button type="button" id="privacyAuditCloseBtn" class="modal-close-btn" aria-label="Fechar auditoria de privacidade">✕</button>
+      </div>
+      <div id="privacyAuditDialogBody"></div>
+    </div>
+  </dialog>
 
   <!-- Status da base -->
   <div class="section-title">🗄️ Status da Base de Dados</div>

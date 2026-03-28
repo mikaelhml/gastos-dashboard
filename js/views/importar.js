@@ -1,7 +1,9 @@
-import { getStoreCounts, clearAllImported, clearAllData } from '../db.js';
+import { getStoreCounts, getAll, clearAllImported, clearAllData } from '../db.js';
 import { detectarLayoutProfile } from '../parsers/layout-profiles.js';
 import { escapeHtml } from '../utils/dom.js';
 import { exportConfig, importConfig } from '../utils/config-io.js';
+import { buildEmptyStateViewModels } from '../utils/empty-states.js';
+import { buildPrivacyAuditModel } from '../utils/privacy-audit.js';
 import {
   applyFullBackupRestore,
   exportFullBackup,
@@ -16,6 +18,7 @@ let _importando = false;
 let _dropZoneBound = false;
 let _configBound = false;
 let _backupBound = false;
+let _privacyAuditBound = false;
 
 export async function buildImportar() {
   await refreshStatus();
@@ -33,6 +36,11 @@ export async function buildImportar() {
   if (!_backupBound) {
     _bindFullBackupSection();
     _backupBound = true;
+  }
+
+  if (!_privacyAuditBound) {
+    _bindPrivacyAudit();
+    _privacyAuditBound = true;
   }
 }
 
@@ -55,41 +63,109 @@ function openFilePicker(fileInput) {
 }
 
 async function refreshStatus() {
-  const counts = await getStoreCounts();
+  const [counts, pdfHistory, storageEstimate] = await Promise.all([
+    getStoreCounts(),
+    getAll('pdfs_importados'),
+    getStorageEstimate(),
+  ]);
   const grid = document.getElementById('dbStatusGrid');
-  if (!grid) return;
+  if (grid) {
+    grid.innerHTML = `
+      <div class="db-status-card">
+        <div class="ds-label">Transações</div>
+        <div class="ds-count">${counts.transacoes}</div>
+        <div class="ds-sub">Extrato conta</div>
+      </div>
+      <div class="db-status-card">
+        <div class="ds-label">Lançamentos</div>
+        <div class="ds-count">${counts.lancamentos}</div>
+        <div class="ds-sub">Fatura cartão</div>
+      </div>
+      <div class="db-status-card">
+        <div class="ds-label">Assinaturas</div>
+        <div class="ds-count">${counts.assinaturas}</div>
+        <div class="ds-sub">Recorrentes</div>
+      </div>
+      <div class="db-status-card">
+        <div class="ds-label">Despesas Fixas</div>
+        <div class="ds-count">${counts.despesas}</div>
+        <div class="ds-sub">Mensais fixas</div>
+      </div>
+      <div class="db-status-card">
+        <div class="ds-label">PDFs</div>
+        <div class="ds-count">${counts.pdfs}</div>
+        <div class="ds-sub">Arquivos importados</div>
+      </div>
+      <div class="db-status-card">
+        <div class="ds-label">Registrato</div>
+        <div class="ds-count">${counts.registratoMeses}</div>
+        <div class="ds-sub">Meses SCR</div>
+      </div>`;
+  }
 
-  grid.innerHTML = `
-    <div class="db-status-card">
-      <div class="ds-label">Transações</div>
-      <div class="ds-count">${counts.transacoes}</div>
-      <div class="ds-sub">Extrato conta</div>
-    </div>
-    <div class="db-status-card">
-      <div class="ds-label">Lançamentos</div>
-      <div class="ds-count">${counts.lancamentos}</div>
-      <div class="ds-sub">Fatura cartão</div>
-    </div>
-    <div class="db-status-card">
-      <div class="ds-label">Assinaturas</div>
-      <div class="ds-count">${counts.assinaturas}</div>
-      <div class="ds-sub">Recorrentes</div>
-    </div>
-    <div class="db-status-card">
-      <div class="ds-label">Despesas Fixas</div>
-      <div class="ds-count">${counts.despesas}</div>
-      <div class="ds-sub">Mensais fixas</div>
-    </div>
-    <div class="db-status-card">
-      <div class="ds-label">PDFs</div>
-      <div class="ds-count">${counts.pdfs}</div>
-      <div class="ds-sub">Arquivos importados</div>
-    </div>
-    <div class="db-status-card">
-      <div class="ds-label">Registrato</div>
-      <div class="ds-count">${counts.registratoMeses}</div>
-      <div class="ds-sub">Meses SCR</div>
+  renderImportFirstStep(buildEmptyStateViewModels({
+    importedTransactionCount: Number(counts.transacoes || 0) + Number(counts.lancamentos || 0) + Number(counts.registratoMeses || 0) + Number(counts.pdfs || 0),
+    manualSubscriptionCount: Number(counts.assinaturas || 0),
+    manualFixedExpenseCount: Number(counts.despesas || 0),
+  }).import);
+
+  renderPrivacyAudit(buildPrivacyAuditModel({
+    counts,
+    pdfHistory,
+    storageEstimate,
+  }));
+}
+
+function renderImportFirstStep(model) {
+  const host = document.getElementById('importarFirstStepState');
+  if (!host) return;
+
+  if (!model?.shouldRender) {
+    host.innerHTML = '';
+    host.style.display = 'none';
+    return;
+  }
+
+  host.innerHTML = `
+    <div class="guided-empty-state guided-empty-state--compact">
+      <div class="guided-empty-state-header">
+        <div>
+          <h3>${escapeHtml(model.title || '')}</h3>
+          <p>${escapeHtml(model.body || '')}</p>
+        </div>
+        <div class="guided-empty-state-badge">Comece aqui</div>
+      </div>
+      <div class="guided-empty-state-actions">
+        ${(model.actions || []).map(action => `
+          <button
+            type="button"
+            class="${action.intent === 'importar' ? 'btn-primary' : 'btn-inline-secondary'}"
+            data-import-first-step-intent="${escapeHtml(action.intent)}"
+            data-import-first-step-tab="${escapeHtml(action.tab)}"
+          >${escapeHtml(action.label)}</button>
+        `).join('')}
+      </div>
     </div>`;
+  host.style.display = '';
+
+  host.querySelectorAll('[data-import-first-step-intent]').forEach(button => {
+    button.addEventListener('click', () => {
+      const intent = button.getAttribute('data-import-first-step-intent');
+      const tab = button.getAttribute('data-import-first-step-tab');
+
+      if (intent === 'importar') {
+        document.getElementById('dropZoneButton')?.click();
+        return;
+      }
+      if (intent === 'restaurar-backup') {
+        document.getElementById('fullBackupImportBtn')?.click();
+        return;
+      }
+      if (tab) {
+        window.switchTab?.(null, tab);
+      }
+    });
+  });
 }
 
 function _bindConfigSection() {
@@ -135,6 +211,37 @@ function _bindConfigSection() {
       'success',
       `${resultado.importados} item(ns) importado(s) em modo ${resultado.modo}.`,
     );
+  });
+}
+
+function _bindPrivacyAudit() {
+  const dialog = document.getElementById('privacyAuditDialog');
+  const openButton = document.getElementById('privacyAuditOpenBtn');
+  const closeButton = document.getElementById('privacyAuditCloseBtn');
+
+  if (!dialog || !openButton || !closeButton) return;
+
+  const close = () => {
+    if (typeof dialog.close === 'function') {
+      dialog.close();
+    } else {
+      dialog.removeAttribute('open');
+    }
+  };
+
+  openButton.addEventListener('click', () => {
+    if (typeof dialog.showModal === 'function') {
+      if (dialog.open) return;
+      dialog.showModal();
+      return;
+    }
+
+    dialog.setAttribute('open', 'open');
+  });
+
+  closeButton.addEventListener('click', close);
+  dialog.addEventListener('click', event => {
+    if (event.target === dialog) close();
   });
 }
 
@@ -542,4 +649,100 @@ function setImportSummary(message, type) {
   if (!summary) return;
   summary.textContent = message || '';
   summary.className = `inline-form-feedback${type ? ` is-${type}` : ''}`;
+}
+
+async function getStorageEstimate() {
+  try {
+    if (typeof navigator === 'undefined' || typeof navigator.storage?.estimate !== 'function') {
+      return null;
+    }
+
+    return await navigator.storage.estimate();
+  } catch {
+    return null;
+  }
+}
+
+function renderPrivacyAudit(model) {
+  const summaryEl = document.getElementById('privacyAuditSummary');
+  const dialogBody = document.getElementById('privacyAuditDialogBody');
+  if (!summaryEl || !dialogBody) return;
+
+  const latestSource = [...model.importSources]
+    .filter(source => source.lastImportIso)
+    .sort((a, b) => Date.parse(b.lastImportIso) - Date.parse(a.lastImportIso))[0] || null;
+  const sourcePreview = model.importSources
+    .slice(0, 3)
+    .map(source => `<li>${escapeHtml(source.label)} · ${escapeHtml(source.lastImportLabel)}</li>`)
+    .join('');
+
+  summaryEl.innerHTML = `
+    <div class="privacy-audit-summary-grid">
+      <div class="privacy-audit-stat">
+        <div class="privacy-audit-stat-label">Registros locais</div>
+        <div class="privacy-audit-stat-value">${model.totalLocalRecords}</div>
+        <div class="privacy-audit-stat-sub">Somando stores exibidas nesta auditoria</div>
+      </div>
+      <div class="privacy-audit-stat">
+        <div class="privacy-audit-stat-label">Armazenamento</div>
+        <div class="privacy-audit-stat-value">${escapeHtml(model.storage.available ? 'Estimado' : 'Indisponível')}</div>
+        <div class="privacy-audit-stat-sub">${escapeHtml(model.storage.summary)}</div>
+      </div>
+      <div class="privacy-audit-stat">
+        <div class="privacy-audit-stat-label">Última origem auditada</div>
+        <div class="privacy-audit-stat-value">${escapeHtml(latestSource?.label || 'Nenhum PDF ainda')}</div>
+        <div class="privacy-audit-stat-sub">${escapeHtml(latestSource?.lastImportLabel || 'Importe um PDF para ver a linha do tempo local')}</div>
+      </div>
+    </div>
+    <div class="privacy-audit-summary-note">
+      ${escapeHtml(model.privacyCopy[0])}
+    </div>
+    <ul class="privacy-audit-mini-list">
+      ${sourcePreview || '<li>Nenhum PDF financeiro importado ainda.</li>'}
+    </ul>`;
+
+  dialogBody.innerHTML = `
+    <div class="modal-grid">
+      ${model.counts.map(item => `
+        <div class="privacy-audit-card">
+          <div class="privacy-audit-card-label">${escapeHtml(item.label)}</div>
+          <div class="privacy-audit-card-value">${item.count}</div>
+          <div class="privacy-audit-card-sub">${escapeHtml(item.detail)}</div>
+        </div>`).join('')}
+    </div>
+
+    <div class="privacy-audit-section">
+      <div class="privacy-audit-section-title">Armazenamento no navegador</div>
+      <div class="privacy-audit-section-body">
+        <strong>${escapeHtml(model.storage.summary)}</strong><br>
+        <span>${escapeHtml(model.storage.detail)}</span>
+      </div>
+    </div>
+
+    <div class="privacy-audit-section">
+      <div class="privacy-audit-section-title">Últimas importações por origem</div>
+      <div class="privacy-audit-section-body">
+        ${model.importSources.length
+          ? `<ul class="privacy-audit-source-list">
+              ${model.importSources.map(source => `
+                <li class="privacy-audit-source-item">
+                  <div>
+                    <strong>${escapeHtml(source.label)}</strong>
+                    <div class="privacy-audit-source-meta">${source.importCount} importação(ões) locais</div>
+                  </div>
+                  <span>${escapeHtml(source.lastImportLabel)}</span>
+                </li>`).join('')}
+            </ul>`
+          : '<div class="privacy-audit-empty">Nenhum PDF financeiro importado ainda nesta base local.</div>'}
+      </div>
+    </div>
+
+    <div class="privacy-audit-section">
+      <div class="privacy-audit-section-title">O que é verdade hoje sobre privacidade</div>
+      <div class="privacy-audit-section-body">
+        <ul class="privacy-audit-copy-list">
+          ${model.privacyCopy.map(item => `<li>${escapeHtml(item)}</li>`).join('')}
+        </ul>
+      </div>
+    </div>`;
 }

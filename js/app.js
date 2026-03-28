@@ -278,7 +278,6 @@ function refreshDashboard() {
 // ── Navegação por abas ────────────────────────────────────────────────────────
 
 function switchTab(event, name) {
-  const currentTab = event?.currentTarget || document.getElementById(`tab-button-${name}`);
   document.querySelectorAll('.tab').forEach(tab => {
     tab.classList.remove('active');
     tab.setAttribute('aria-selected', 'false');
@@ -287,9 +286,18 @@ function switchTab(event, name) {
   document.querySelectorAll('.tab-content').forEach(panel => panel.classList.remove('active'));
 
   document.getElementById('tab-' + name)?.classList.add('active');
-  currentTab?.classList.add('active');
-  currentTab?.setAttribute('aria-selected', 'true');
-  currentTab?.setAttribute('tabindex', '0');
+
+  // Ativa o botão da aba no menu desktop
+  const tabBtn = event?.currentTarget?.classList?.contains('tab')
+    ? event.currentTarget
+    : document.getElementById(`tab-button-${name}`);
+  tabBtn?.classList.add('active');
+  tabBtn?.setAttribute('aria-selected', 'true');
+  tabBtn?.setAttribute('tabindex', '0');
+
+  // Sincroniza o seletor mobile
+  const mobileSelect = document.getElementById('mobileTabSelect');
+  if (mobileSelect && mobileSelect.value !== name) mobileSelect.value = name;
 }
 
 function bindTabKeyboardNavigation() {

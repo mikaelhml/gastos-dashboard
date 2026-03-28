@@ -12,8 +12,8 @@ This roadmap evolves a working local-first finance dashboard from "PDF importer 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Data Safety & Import Reliability** - Imported data is trustworthy, re-imports never corrupt, and a full backup exists before analytics stores are added
-- [ ] **Phase 2: Analytics Foundation** - Spending by category across months is visible with clear month-over-month movement
+- [x] **Phase 1: Data Safety & Import Reliability** - Imported data is trustworthy, re-imports never corrupt, and a full backup exists before analytics stores are added
+- [x] **Phase 2: Analytics Foundation** - Spending by category across months is visible with clear month-over-month movement
 - [ ] **Phase 3: Projection & Financing Tracking** - The projection tab reflects real Registrato/SCR commitments and installment payoff timelines
 - [ ] **Phase 4: Smart Categorization** - The dashboard learns categorization preferences from user corrections and rule definitions
 - [ ] **Phase 5: UX Polish & Privacy Transparency** - The import → understand → track flow is clear and the local-only privacy promise is made explicit
@@ -29,7 +29,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. User can download a complete JSON backup of all dashboard data (all IndexedDB stores) from within the app
   3. User can restore a previously exported JSON backup and see all transactions, subscriptions, and settings correctly populated in the dashboard
   4. Each imported file shows a quality badge (e.g., "28 transações · confiança 94%") and an expandable warnings panel listing any rows that failed to parse
-**Plans**: TBD
+**Plans**: 01-01, 01-02, 01-03
 **UI hint**: yes
 
 ### Phase 2: Analytics Foundation
@@ -40,7 +40,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. User can view a multi-month category trend chart showing actual spending per category for each imported month
   2. User can see which categories rose or fell compared to the prior month, with the delta amount or percentage visually highlighted
   3. User can filter the transaction list by free-text search and see results narrow in real time
-**Plans**: TBD
+**Plans**: 02-01, 02-02, 02-03
 **UI hint**: yes
 
 ### Phase 3: Projection & Financing Tracking
@@ -84,8 +84,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Data Safety & Import Reliability | 0/? | Not started | - |
-| 2. Analytics Foundation | 0/? | Not started | - |
-| 3. Projection & Financing Tracking | 0/? | Not started | - |
+| 1. Data Safety & Import Reliability | 3/3 | Completed | 2026-03-28 |
+| 2. Analytics Foundation | 3/3 | Completed | 2026-03-28 |
+| 3. Projection & Financing Tracking | 0/? | Next up | - |
 | 4. Smart Categorization | 0/? | Not started | - |
 | 5. UX Polish & Privacy Transparency | 0/? | Not started | - |

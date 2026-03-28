@@ -70,11 +70,11 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Depends on**: Phase 4
 **Requirements**: None (v1) — addresses active PROJECT.md goal: "Refinar a experiencia de uso"
 **Success Criteria** (what must be TRUE):
-  1. User can open a privacy audit screen that shows local storage usage, last import dates per source, and a confirmation that no outbound network calls are made with financial data
+  1. User can open a privacy audit screen that shows local storage usage, last import dates per source, and an honest confirmation that financial data is not uploaded to a backend
   2. A first-time user with no imported data sees helpful empty states with clear next-step instructions rather than empty charts
   3. User can export the transaction list to Excel/CSV from the transactions tab
   4. The dashboard is fully usable on a mobile-width screen without horizontal scrolling or overlapping elements
-**Plans**: 04-01, 04-02, 04-03
+**Plans**: 05-01, 05-02, 05-03
 **UI hint**: yes
 
 ## Progress
@@ -88,4 +88,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Analytics Foundation | 3/3 | Completed | 2026-03-28 |
 | 3. Projection & Financing Tracking | 3/3 | Completed | 2026-03-28 |
 | 4. Smart Categorization | 2/3 + approval pending | Awaiting verification | - |
-| 5. UX Polish & Privacy Transparency | 0/? | Not started | - |
+| 5. UX Polish & Privacy Transparency | 3/3 | Planned (PASS) | - |

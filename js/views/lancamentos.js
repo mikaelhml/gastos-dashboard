@@ -3,6 +3,7 @@ import { addItem, putItem, deleteItem, getAll } from '../db.js';
 import { escapeHtml } from '../utils/dom.js';
 import { enriquecerCanal, getCanalMeta, inferirCanal, listarCanais } from '../utils/transaction-tags.js';
 import {
+  applyCategorizationToImportedRows,
   buildCategoryMemoryRecord,
   buildCategorizationRuntime,
   buildRecategorizedRowPatches,
@@ -62,10 +63,7 @@ export function initLancamentos(lancamentos, extratoTransacoes = [], _assinatura
   // Mescla e ordena por data decrescente
   _lancamentos = [...cartaoNorm, ...extratoNorm, ...contextRows].sort((a, b) => parseDataTs(b.data) - parseDataTs(a.data));
 
-  const cats = [...new Set(_lancamentos.map(l => l.cat))].sort();
-  const sel = document.getElementById('filterCat');
-  sel.innerHTML = '<option value="">Todas as categorias</option>';
-  cats.forEach(c => sel.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`);
+  refreshLancamentosFilterOptions(document.getElementById('filterCat')?.value || '');
 
   const canais = listarCanais(_lancamentos);
   const selCanal = document.getElementById('filterCanal');
@@ -460,6 +458,57 @@ function getCategorizationRuleCategoryValue() {
   return normalizeCategoryText(selectEl.value || '');
 }
 
+function refreshLancamentosFilterOptions(selectedCategory = '') {
+  const selectEl = document.getElementById('filterCat');
+  if (!selectEl) return;
+
+  const normalizedSelected = normalizeCategoryText(selectedCategory);
+  const categories = getKnownCategories();
+
+  selectEl.innerHTML = '<option value="">Todas as categorias</option>';
+  categories.forEach(category => {
+    selectEl.innerHTML += `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`;
+  });
+
+  if (normalizedSelected && categories.includes(normalizedSelected)) {
+    selectEl.value = normalizedSelected;
+    return;
+  }
+
+  selectEl.value = '';
+}
+
+function syncInMemoryRecategorization(runtime, rules = [], memories = []) {
+  _categorizationRules = sortCategorizationRules(rules).map(rule => ({
+    ...rule,
+    enabled: rule?.enabled !== false,
+  }));
+  _categorizationMemories = (memories || []).map(memory => ({
+    ...memory,
+    enabled: memory?.enabled !== false,
+  }));
+
+  _lancamentos = _lancamentos.map(item => {
+    if (item?.contextoDerivado) return item;
+
+    const [recategorized] = applyCategorizationToImportedRows([item], runtime, {
+      source: item?.source === 'conta' ? 'conta' : 'cartao',
+      direction: getLancamentoDirection(item),
+    });
+
+    return {
+      ...item,
+      cat: recategorized?.cat ?? item.cat,
+      cat_origem: recategorized?.cat_origem ?? item.cat_origem ?? null,
+      cat_regra_id: recategorized?.cat_regra_id ?? item.cat_regra_id ?? null,
+    };
+  });
+
+  refreshLancamentosFilterOptions(document.getElementById('filterCat')?.value || '');
+  renderCategorizationPanel();
+  filterLancamentos();
+}
+
 async function recategorizePersistedImportsFromRules() {
   const [rules, memories, cardRows, accountRows] = await Promise.all([
     getAll('categorizacao_regras'),
@@ -482,6 +531,8 @@ async function recategorizePersistedImportsFromRules() {
     ...cardPatches.map(item => putItem('lancamentos', item)),
     ...accountPatches.map(item => putItem('extrato_transacoes', item)),
   ]);
+
+  syncInMemoryRecategorization(runtime, rules, memories);
 
   return {
     totalChanged: cardPatches.length + accountPatches.length,

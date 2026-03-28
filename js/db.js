@@ -12,7 +12,7 @@
  *   pdfs_importados   keyPath: hash
  */
 
-const DB_NAME    = 'gastos_db_public';
+export const DB_NAME = 'gastos_db_public';
 const DB_VERSION = 5;
 
 const STORE_DEFS = [
@@ -29,6 +29,8 @@ const STORE_DEFS = [
   { name: 'registrato_scr_snapshot', keyPath: 'id', autoIncrement: false },
   { name: 'registrato_scr_resumo_mensal', keyPath: 'mesRef', autoIncrement: false },
 ];
+
+export const FULL_BACKUP_STORE_NAMES = STORE_DEFS.map(store => store.name);
 
 let _db = null;
 
@@ -188,4 +190,48 @@ export async function getStoreCounts() {
     count('registrato_scr_resumo_mensal'),
   ]);
   return { assinaturas, despesas, lancamentos, transacoes, pdfs, registratoMeses };
+}
+
+export async function getAllStoresSnapshot(storeNames = FULL_BACKUP_STORE_NAMES) {
+  await openDB();
+
+  const entries = await Promise.all(
+    storeNames.map(async storeName => [storeName, await getAll(storeName)]),
+  );
+
+  return Object.fromEntries(entries);
+}
+
+export async function replaceAllStoresFromBackup(storeMap) {
+  await openDB();
+
+  if (!storeMap || typeof storeMap !== 'object') {
+    throw new Error('Backup invalido: stores ausentes.');
+  }
+
+  for (const storeName of FULL_BACKUP_STORE_NAMES) {
+    if (!Array.isArray(storeMap[storeName])) {
+      throw new Error(`Backup invalido: store "${storeName}" ausente ou malformada.`);
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    const tx = _db.transaction(FULL_BACKUP_STORE_NAMES, 'readwrite');
+    tx.oncomplete = () => resolve();
+    tx.onerror = event => reject(event.target.error);
+    tx.onabort = event => reject(event.target.error || new Error('Falha ao restaurar o backup completo.'));
+
+    try {
+      for (const storeName of FULL_BACKUP_STORE_NAMES) {
+        const store = tx.objectStore(storeName);
+        store.clear();
+        for (const item of storeMap[storeName]) {
+          store.add(item);
+        }
+      }
+    } catch (error) {
+      tx.abort();
+      reject(error);
+    }
+  });
 }

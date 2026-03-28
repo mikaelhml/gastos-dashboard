@@ -718,17 +718,34 @@
   </div>
 
   <div class="surface-panel utility-panel">
-    <div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;margin-bottom:8px">⚙️ Configurações</div>
+    <div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;margin-bottom:8px">🧯 Backup completo da base</div>
     <p style="font-size:0.85rem;color:#718096;margin-bottom:16px">
-      Exporte ou importe suas assinaturas e despesas fixas em JSON para fazer backup, migrar de navegador ou restaurar sua configuração.
+      Exporte ou restaure um JSON com todas as stores do IndexedDB para recuperar transações, lançamentos, Registrato, observações e configurações.
+    </p>
+    <div class="config-io-actions">
+      <button id="fullBackupExportBtn" type="button" class="btn-primary">
+        📤 Exportar backup completo (JSON)
+      </button>
+      <input type="file" id="fullBackupFileInput" accept=".json,application/json" style="display:none">
+      <button id="fullBackupImportBtn" type="button" class="btn-primary">
+        📥 Restaurar backup completo (JSON)
+      </button>
+    </div>
+    <div id="fullBackupIoResult" class="inline-form-feedback" style="margin-top:14px" aria-live="polite"></div>
+  </div>
+
+  <div class="surface-panel utility-panel">
+    <div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;margin-bottom:8px">⚙️ Configuração manual</div>
+    <p style="font-size:0.85rem;color:#718096;margin-bottom:16px">
+      Exporte ou importe apenas assinaturas e despesas fixas em JSON para migrar sua configuração manual sem substituir o restante da base.
     </p>
     <div class="config-io-actions">
       <button id="configExportBtn" type="button" class="btn-primary">
-        📤 Exportar configuração (JSON)
+        📤 Exportar configuração manual (JSON)
       </button>
       <input type="file" id="configFileInput" accept=".json,application/json" style="display:none">
       <button id="configImportBtn" type="button" class="btn-primary">
-        📥 Importar configuração (JSON)
+        📥 Importar configuração manual (JSON)
       </button>
     </div>
     <div id="configIoResult" class="inline-form-feedback" style="margin-top:14px" aria-live="polite"></div>

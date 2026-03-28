@@ -650,6 +650,105 @@ tr.row-contexto-scr td:first-child { border-left: 3px solid #805ad5; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .import-result-card .irc-status { font-size: 0.88rem; font-weight: 700; flex-shrink: 0; }
+.irc-meta {
+  margin-top: 10px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.import-quality-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+.import-quality-badge.is-high {
+  background: rgba(56, 161, 105, 0.14);
+  border-color: rgba(104, 211, 145, 0.45);
+  color: #9ae6b4;
+}
+.import-quality-badge.is-medium {
+  background: rgba(214, 158, 46, 0.14);
+  border-color: rgba(246, 224, 94, 0.45);
+  color: #faf089;
+}
+.import-quality-badge.is-low {
+  background: rgba(197, 48, 48, 0.14);
+  border-color: rgba(252, 129, 129, 0.45);
+  color: #feb2b2;
+}
+.irc-warnings {
+  margin-top: 12px;
+}
+.import-warning-panel {
+  border: 1px solid #2d3748;
+  border-radius: 10px;
+  background: #111827;
+}
+.import-warning-panel summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 10px 12px;
+  font-size: 0.8rem;
+  color: #e2e8f0;
+  font-weight: 700;
+}
+.import-warning-panel summary::-webkit-details-marker { display: none; }
+.import-warning-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px 12px;
+  display: grid;
+  gap: 10px;
+}
+.import-warning-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: start;
+}
+.import-warning-level {
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.import-warning-level.is-warning {
+  background: rgba(214, 158, 46, 0.18);
+  color: #faf089;
+}
+.import-warning-level.is-info {
+  background: rgba(66, 153, 225, 0.18);
+  color: #90cdf4;
+}
+.import-warning-copy {
+  display: grid;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: #cbd5e0;
+}
+.import-warning-sample {
+  font-size: 0.74rem;
+  color: #718096;
+}
+.import-warning-overflow,
+.import-warning-empty {
+  margin-top: 10px;
+  font-size: 0.78rem;
+  color: #a0aec0;
+}
+.import-warning-empty {
+  padding: 10px 12px;
+  border: 1px dashed #2d3748;
+  border-radius: 10px;
+  background: rgba(26, 32, 44, 0.7);
+}
 
 .db-status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 28px; }
 .db-status-card {

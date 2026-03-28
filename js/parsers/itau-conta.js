@@ -16,6 +16,7 @@
 import { addItem, putItem, getAll, bulkAdd, deleteItem } from '../db.js';
 import { categorizar } from '../utils/categorizer.js';
 import { inferirCanal } from '../utils/transaction-tags.js';
+import { buildImportQuality } from '../utils/import-integrity.js';
 import {
   computeHash,
   extrairLinhasPDF,
@@ -199,7 +200,12 @@ export async function importarItauConta(file, onProgress = () => {}) {
   const hash           = await computeHash(buffer);
   const pdfsImportados = await getAll('pdfs_importados');
   if (pdfsImportados.some(p => p.hash === hash)) {
-    return { importado: 0, duplicata: true, mes: '' };
+    return {
+      importado: 0,
+      duplicata: true,
+      mes: '',
+      warnings: [{ code: 'duplicate-file', level: 'info', message: 'Este PDF ja havia sido importado anteriormente.' }],
+    };
   }
 
   onProgress(30);
@@ -281,5 +287,15 @@ export async function importarItauConta(file, onProgress = () => {}) {
   await recalcularSummary();
   onProgress(100);
 
-  return { importado: transacoes.length, duplicata: false, mes: mesLabel };
+  return {
+    importado: transacoes.length,
+    duplicata: false,
+    mes: mesLabel,
+    quality: buildImportQuality({
+      importedCount: transacoes.length,
+      warningCount: 0,
+      unitLabel: 'transação',
+    }),
+    warnings: [],
+  };
 }

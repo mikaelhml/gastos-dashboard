@@ -1,6 +1,12 @@
 import { addItem, getAll, bulkAdd, deleteItem } from '../db.js';
 import { categorizar } from '../utils/categorizer.js';
 import { inferirCanal } from '../utils/transaction-tags.js';
+import {
+  buildImportQuality,
+  buildLancamentoFingerprint,
+  dedupeImportedLancamentos,
+  planScopedReplacement,
+} from '../utils/import-integrity.js';
 import { computeHash, extrairEstruturaPDF, extrairParcelaFinal, parseBRL, MESES_ABREV } from './pdf-utils.js';
 
 // Aceita prefixo de ícone (contactless, débito, etc.) antes da data
@@ -14,6 +20,7 @@ const ITAU_FATURA_PROFILE = {
   DOMESTIC_MULTICARD: 'itau-domestico-multicartao',
   INTERNATIONAL_BLACK: 'itau-internacional-black',
 };
+const SOURCE_KEY = 'itau-fatura';
 
 const SECTION_PATTERNS = {
   purchases: ['LANCAMENTOS COMPRAS E SAQUES'],
@@ -79,7 +86,7 @@ export async function importarItauFatura(file, onProgress = () => {}) {
   const hash = await computeHash(buffer);
   const pdfsImportados = await getAll('pdfs_importados');
   if (pdfsImportados.some(p => p.hash === hash)) {
-    return { importado: 0, duplicata: true, mes: '' };
+    return { importado: 0, duplicata: true, mes: '', warnings: [] };
   }
 
   onProgress(30);
@@ -94,6 +101,7 @@ export async function importarItauFatura(file, onProgress = () => {}) {
       importado: 0,
       duplicata: false,
       mes: '',
+      warnings: [],
       erro: 'Este PDF de fatura não foi reconhecido como Itaú/Visa. O layout atual não é suportado pelo parser Itaú.',
     };
   }
@@ -108,7 +116,7 @@ export async function importarItauFatura(file, onProgress = () => {}) {
   if (lancamentos.length === 0) {
     if (isFaturaSemLancamentos(linhas)) {
       onProgress(100);
-      return { importado: 0, duplicata: false, mes: mesFatura || '' };
+      return { importado: 0, duplicata: false, mes: mesFatura || '', warnings: [] };
     }
     const amostra = linhas.slice(0, 30).join('\n');
     console.error('[itau-fatura] Nenhum lançamento. Primeiras 30 linhas:\n', amostra);
@@ -116,6 +124,7 @@ export async function importarItauFatura(file, onProgress = () => {}) {
       importado: 0,
       duplicata: false,
       mes: mesFatura || '',
+      warnings: [],
       erro: `Nenhum lançamento encontrado em "${file.name}". Verifique o console (F12) para ver o texto extraído.`,
       debug: amostra,
     };
@@ -128,6 +137,7 @@ export async function importarItauFatura(file, onProgress = () => {}) {
       importado: 0,
       duplicata: false,
       mes: '',
+      warnings: [],
       erro: `Não foi possível identificar o mês da fatura em "${file.name}". Verifique o console (F12).`,
       debug: amostra,
     };
@@ -135,17 +145,32 @@ export async function importarItauFatura(file, onProgress = () => {}) {
 
   onProgress(75);
 
-  const todos = await getAll('lancamentos');
-  for (const item of todos) {
-    if (item.fatura === mesFatura) {
-      await deleteItem('lancamentos', item.id);
-    }
-  }
-
-  await bulkAdd('lancamentos', lancamentos.map(item => ({
+  const incomingItems = lancamentos.map(item => ({
     ...item,
     fatura: mesFatura,
-  })));
+    importSource: SOURCE_KEY,
+    importPeriodKey: mesFatura,
+    importFingerprint: buildLancamentoFingerprint({
+      ...item,
+      fatura: mesFatura,
+      importSource: SOURCE_KEY,
+    }),
+  }));
+
+  const dedupeResult = dedupeImportedLancamentos(incomingItems);
+  const todos = await getAll('lancamentos');
+  const replacementPlan = planScopedReplacement({
+    existingItems: todos,
+    incomingItems: dedupeResult.uniqueItems,
+    sourceKey: SOURCE_KEY,
+    periodKey: mesFatura,
+  });
+
+  for (const id of replacementPlan.deleteIds) {
+    await deleteItem('lancamentos', id);
+  }
+
+  await bulkAdd('lancamentos', dedupeResult.uniqueItems);
 
   onProgress(85);
 
@@ -154,13 +179,29 @@ export async function importarItauFatura(file, onProgress = () => {}) {
     nome: file.name,
     tamanho: file.size,
     importadoEm: new Date().toISOString(),
-    transacoes: lancamentos.length,
+    transacoes: dedupeResult.uniqueItems.length,
     mes: mesFatura,
     tipo: 'fatura-itau',
   });
 
   onProgress(100);
-  return { importado: lancamentos.length, duplicata: false, mes: mesFatura };
+  const warnings = [
+    ...dedupeResult.warnings,
+    ...replacementPlan.warnings,
+  ];
+
+  return {
+    importado: dedupeResult.uniqueItems.length,
+    duplicata: false,
+    mes: mesFatura,
+    quality: buildImportQuality({
+      importedCount: dedupeResult.uniqueItems.length,
+      duplicateCount: dedupeResult.duplicateCount,
+      warningCount: warnings.length,
+      unitLabel: 'transação',
+    }),
+    warnings,
+  };
 }
 
 function montarLinhasColunadas(paginas) {

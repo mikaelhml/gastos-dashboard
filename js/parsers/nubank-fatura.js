@@ -2,6 +2,12 @@ import { addItem, getAll, bulkAdd, deleteItem } from '../db.js';
 import { categorizar } from '../utils/categorizer.js';
 import { inferirCanal } from '../utils/transaction-tags.js';
 import {
+  buildImportQuality,
+  buildLancamentoFingerprint,
+  dedupeImportedLancamentos,
+  planScopedReplacement,
+} from '../utils/import-integrity.js';
+import {
   computeHash,
   extrairLinhasPDF,
   extrairParcelaFinal,
@@ -13,6 +19,7 @@ import {
   normalizarMes,
 } from './pdf-utils.js';
 
+const SOURCE_KEY = 'nubank-fatura';
 const RE_VALOR_FINAL = /([\d.]{1,10},\d{2})\s*$/;
 const RE_TRANSACAO = /^((?:\d{2}\s+[A-Z]{3}(?:\s+\d{4})?)|(?:\d{2}\/\d{2}(?:\/\d{4})?))\s+(.+?)\s+([\d.]{1,10},\d{2})$/i;
 const RE_DATA_SOZINHA = /^(?:\d{2}\s+[A-Z]{3}(?:\s+\d{4})?|\d{2}\/\d{2}(?:\/\d{4})?)$/i;
@@ -37,7 +44,7 @@ export async function importarNubankFatura(file, onProgress = () => {}) {
   const hash = await computeHash(buffer);
   const pdfsImportados = await getAll('pdfs_importados');
   if (pdfsImportados.some(p => p.hash === hash)) {
-    return { importado: 0, duplicata: true, mes: '' };
+    return { importado: 0, duplicata: true, mes: '', warnings: [] };
   }
 
   onProgress(20);
@@ -50,6 +57,7 @@ export async function importarNubankFatura(file, onProgress = () => {}) {
       importado: 0,
       duplicata: false,
       mes: '',
+      warnings: [],
       erro: emissor === 'itau'
         ? 'Este PDF parece ser de fatura Itaú/Visa, não de Nubank. O parser atual suporta apenas faturas Nubank.'
         : 'Este PDF de fatura não foi reconhecido como Nubank. O layout atual não é suportado pelo parser.',
@@ -58,7 +66,7 @@ export async function importarNubankFatura(file, onProgress = () => {}) {
 
   const mesFatura = extrairMesFatura(linhas);
   onProgress(60);
-  const lancamentos = parsearLancamentos(linhas, mesFatura);
+  const { lancamentos, parseWarnings } = parsearLancamentos(linhas, mesFatura);
 
   console.log(`[nubank-fatura] "${file.name}": ${lancamentos.length} lançamentos, fatura=${mesFatura || 'não identificada'}`);
 
@@ -69,6 +77,7 @@ export async function importarNubankFatura(file, onProgress = () => {}) {
       importado: 0,
       duplicata: false,
       mes: mesFatura || '',
+      warnings: [],
       erro: `Nenhum lançamento encontrado em "${file.name}". Verifique o console (F12) para ver o texto extraído.`,
       debug: amostra,
     };
@@ -81,6 +90,7 @@ export async function importarNubankFatura(file, onProgress = () => {}) {
       importado: 0,
       duplicata: false,
       mes: '',
+      warnings: [],
       erro: `Não foi possível identificar o mês da fatura em "${file.name}". Verifique o console (F12).`,
       debug: amostra,
     };
@@ -88,17 +98,32 @@ export async function importarNubankFatura(file, onProgress = () => {}) {
 
   onProgress(75);
 
-  const todos = await getAll('lancamentos');
-  for (const item of todos) {
-    if (item.fatura === mesFatura) {
-      await deleteItem('lancamentos', item.id);
-    }
-  }
-
-  await bulkAdd('lancamentos', lancamentos.map(item => ({
+  const incomingItems = lancamentos.map(item => ({
     ...item,
     fatura: mesFatura,
-  })));
+    importSource: SOURCE_KEY,
+    importPeriodKey: mesFatura,
+    importFingerprint: buildLancamentoFingerprint({
+      ...item,
+      fatura: mesFatura,
+      importSource: SOURCE_KEY,
+    }),
+  }));
+
+  const dedupeResult = dedupeImportedLancamentos(incomingItems);
+  const todos = await getAll('lancamentos');
+  const replacementPlan = planScopedReplacement({
+    existingItems: todos,
+    incomingItems: dedupeResult.uniqueItems,
+    sourceKey: SOURCE_KEY,
+    periodKey: mesFatura,
+  });
+
+  for (const id of replacementPlan.deleteIds) {
+    await deleteItem('lancamentos', id);
+  }
+
+  await bulkAdd('lancamentos', dedupeResult.uniqueItems);
 
   onProgress(85);
 
@@ -107,13 +132,30 @@ export async function importarNubankFatura(file, onProgress = () => {}) {
     nome: file.name,
     tamanho: file.size,
     importadoEm: new Date().toISOString(),
-    transacoes: lancamentos.length,
+    transacoes: dedupeResult.uniqueItems.length,
     mes: mesFatura,
     tipo: 'fatura',
   });
 
   onProgress(100);
-  return { importado: lancamentos.length, duplicata: false, mes: mesFatura };
+  const warnings = [
+    ...dedupeResult.warnings,
+    ...replacementPlan.warnings,
+    ...parseWarnings,
+  ];
+
+  return {
+    importado: dedupeResult.uniqueItems.length,
+    duplicata: false,
+    mes: mesFatura,
+    quality: buildImportQuality({
+      importedCount: dedupeResult.uniqueItems.length,
+      duplicateCount: dedupeResult.duplicateCount,
+      warningCount: warnings.length,
+      unitLabel: 'transação',
+    }),
+    warnings,
+  };
 }
 
 function extrairMesFatura(linhas) {
@@ -194,6 +236,8 @@ function detectarEmissorFatura(linhas) {
 function parsearLancamentos(linhas, mesFatura) {
   const lancamentos = [];
   const candidatos = montarLinhasCandidatas(linhas);
+  const rejectedSamples = [];
+  let rejectedCount = 0;
 
   for (const linha of candidatos) {
     const match = linha.match(RE_TRANSACAO);
@@ -203,13 +247,21 @@ function parsearLancamentos(linhas, mesFatura) {
     const dataInfo = parseDataFatura(rawData.toUpperCase(), mesFatura);
     const valor = parseBRL(rawValor);
 
-    if (!dataInfo || !Number.isFinite(valor) || valor <= 0) continue;
+    if (!dataInfo || !Number.isFinite(valor) || valor <= 0) {
+      rejectedCount++;
+      if (rejectedSamples.length < 3) rejectedSamples.push(linha);
+      continue;
+    }
 
     // Novo layout Nubank inclui "R$ valor" na linha — strip do sufixo R$
     let desc = rawDescRaw.trim().replace(/\s*R\$\s*$/, '');
 
     // Filtrar linhas de controle: "Pagamento em DD MMM", "Saldo restante da fatura anterior"
-    if (RE_DESC_INVALIDA.test(desc)) continue;
+    if (RE_DESC_INVALIDA.test(desc)) {
+      rejectedCount++;
+      if (rejectedSamples.length < 3) rejectedSamples.push(linha);
+      continue;
+    }
 
     // Novo layout: strip prefixo de número de cartão "•••• 6975 "
     desc = desc.replace(RE_CARD_PREFIX, '').trim();
@@ -219,7 +271,11 @@ function parsearLancamentos(linhas, mesFatura) {
       desc = parcelaInfo.desc;
     }
 
-    if (!desc || desc.length < 2) continue;
+    if (!desc || desc.length < 2) {
+      rejectedCount++;
+      if (rejectedSamples.length < 3) rejectedSamples.push(linha);
+      continue;
+    }
 
     lancamentos.push({
       data: dataInfo.data,
@@ -232,7 +288,18 @@ function parsearLancamentos(linhas, mesFatura) {
     });
   }
 
-  return lancamentos;
+  const parseWarnings = rejectedCount > 0
+    ? [{
+        code: 'parser-candidates-skipped',
+        level: 'info',
+        message: rejectedCount === 1
+          ? '1 linha candidata foi ignorada na validacao final.'
+          : `${rejectedCount} linhas candidatas foram ignoradas na validacao final.`,
+        ...(rejectedSamples.length > 0 ? { sample: rejectedSamples.join(' | ') } : {}),
+      }]
+    : [];
+
+  return { lancamentos, parseWarnings };
 }
 
 function extrairParcelaValida(desc) {

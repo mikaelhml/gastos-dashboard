@@ -1,104 +1,51 @@
 # Copilot Instructions — Dashboard de Gastos Pessoais
 
-## Como rodar localmente
+## Build, test, and lint commands
 
-ES Modules nativos **não funcionam** via `file://` — exige servidor HTTP:
+Run the app from the repository root with an HTTP server because native ES Modules do not work via `file://`:
 
 ```bash
-cd gastos-dashboard
 python -m http.server 8080
-# ou no Windows:
+```
+
+Windows helper:
+
+```bat
 serve.bat
 ```
 
-Acessar em `http://localhost:8080`. Não há build, bundle, transpile ou instalação de dependências.
+`serve.bat` falls back to `python3 -m http.server 8080` and then `npx serve -l 8080 .` if needed. Open `http://localhost:8080`.
 
-## Arquitetura
+There is no build step, package install, automated test suite, single-test command, or lint command in this repository.
 
-App web estático (GitHub Pages), sem backend, sem framework, sem build tool.
+## High-level architecture
 
-**Camada de persistência:** `js/db.js` é o único ponto de acesso ao IndexedDB. Banco: `gastos_db_public` v2. Todas as views importam exclusivamente de `db.js` — nunca acessam `indexedDB` diretamente.
+This is a static GitHub Pages app: `index.html` + `css/styles.css` + native ES modules under `js/`. There is no backend, framework, bundler, or transpilation layer.
 
-**Fluxo de dados:**
-```
-index.html (type="module")
-  └─ app.js             ← init, seed, refresh geral, expõe funções ao window
-       ├─ db.js         ← wrapper IndexedDB (único ponto de acesso)
-       ├─ seed.js       ← DEVE ficar VAZIO na versão pública
-       ├─ views/*.js    ← cada arquivo renderiza uma aba; recebe dados via parâmetro
-       ├─ parsers/      ← cada parser recebe um File e retorna { importado, mes, duplicata }
-       └─ utils/        ← funções puras sem efeitos colaterais
-```
+`index.html` owns the shell, tab markup, and inline handler names. It defines temporary stub functions before the module loads, so public function names exported later by `js/app.js` are part of the HTML contract.
 
-**Ciclo de refresh:** `refreshDashboard()` em `app.js` usa uma `Promise` encadeada (`_refreshChain`) para serializar chamadas concorrentes. Após qualquer importação bem-sucedida, chamar `window.refreshDashboard()`.
+`js/app.js` is the orchestrator. Startup flow is `openDB()` → `seedIfEmpty(SEED_DATA)` → `refreshDashboard()`. It loads all stores in parallel, normalizes imported records, computes Registrato suggestions/insights, renders every tab, and exposes the public `window` API used by the HTML.
 
-**Funções expostas ao `window`:** `switchTab`, `filterLancamentos`, `clearLancamentosFilters`, `filterExtrato`, `clearExtratoFilters`, `recalcularProjecao`, `clearBase`, `refreshDashboard`, `selectEmoji`, `syncEmojiPicker`, `toggleEmojiPicker`. São chamadas por atributos `onclick`/`oninput` no HTML — não remover nem renomear sem atualizar o `index.html`.
+`js/db.js` is the only persistence gateway. The IndexedDB database is `gastos_db_public` at version `5`. All reads/writes should go through helpers in this file; do not access `indexedDB` directly from views or parsers. `onupgradeneeded` creates missing stores, so schema changes must be expressed here.
 
-## Convenções do codebase
+The render pipeline is centralized in `app.js`: data is fetched once, then passed into builders in `js/views/*.js`. Views are mostly renderers and interaction handlers for a single tab. They do not own data loading; after a mutation/import they rely on `window.refreshDashboard()` to rebuild the UI from persisted state.
 
-### IndexedDB
-- Operações: `getAll`, `addItem`, `putItem`, `deleteItem`, `clearStore`, `bulkAdd` (todas em `db.js`).
-- `bulkAdd` usa uma única transação para inserções em lote — usar sempre que importar múltiplos registros.
-- `seedIfEmpty` só popula uma store se ela estiver com 0 registros.
-- `clearAllImported()` apaga `extrato_transacoes`, `extrato_summary`, `lancamentos`, `pdfs_importados` — mas **mantém** `assinaturas` e `despesas_fixas`.
+PDF import is routed through `js/parsers/layout-profiles.js`. Detection order is `matchFileName` first, then `matchContent` using normalized extracted text from the first pages. Each profile points to a dedicated importer (`nubank-conta`, `nubank-fatura`, `itau-conta`, `itau-fatura`, `registrato-scr`), so new banks/layouts should be added as new profile+parser pairs instead of patching existing contracts.
 
-### Parsers de PDF
-- Dependência compartilhada: `js/parsers/pdf-utils.js` — contém `extrairLinhasPDF`, `extrairEstruturaPDF`, `extrairGruposPDF`, `computeHash`, `parseBRL`, `parseDataNubank`.
-- PDF.js é carregado dinamicamente via `import()` dentro de `pdf-utils.js` (CDN 4.2.67).
-- Senha de PDF: armazenada em `cachedPdfPassword` (escopo do módulo em `pdf-utils.js`) e reutilizada automaticamente para os próximos PDFs da sessão.
-- Cada parser exporta uma função `importar<Banco>(file, onProgress)` que retorna `{ importado: N, duplicata: bool, mes: string }`.
-- Deduplicação por SHA-256: checar `pdfs_importados` antes de processar.
+`js/parsers/pdf-utils.js` is the shared PDF foundation: PDF.js loading, password reuse, SHA-256 hashing, text extraction, BRL/date helpers, and parcel extraction. Importers use it to deduplicate files through the `pdfs_importados` store before writing parsed data.
 
-### Detecção de layout (`layout-profiles.js`)
-Ordem de prioridade: `matchFileName` → `matchContent` (analisa as primeiras 120 linhas normalizadas/sem acentos/uppercase). Para adicionar novo banco: incluir novo perfil no array `PDF_LAYOUT_PROFILES` — não alterar parsers existentes.
+Registrato/SCR is a first-class flow, not just an import side feature. The parser writes to `registrato_scr_snapshot` and `registrato_scr_resumo_mensal`; `js/utils/registrato-suggestions.js` derives suggestions and insights; `js/views/registrato.js` renders the dedicated tab; and `dashboard-context.js` injects SCR context into other tabs.
 
-### Parser Itaú (`itau-fatura.js`) — ponto de atenção
-- `extrairEstruturaPDF` com `tol=3` (menor que o padrão 8) para lidar com layout de 2 colunas.
-- `montarLinhasColunadas` agrupa grupos por posição X para separar coluna esquerda e direita.
-- Estratégias de fallback em cascata para OCR ruim.
-- Variante Uniclass/Signature ainda em estabilização — PDFs desse tipo podem retornar `0 lançamentos`.
+## Key conventions
 
-### Views
-- Cada view recebe todos os dados como parâmetros (não busca do IndexedDB diretamente).
-- Renderizam HTML diretamente via `innerHTML`; usar `escapeHtml()` de `js/utils/dom.js` em conteúdo vindo de dados do usuário.
-- Filtros de tabela (`filterLancamentos`, `filterExtrato`) operam sobre o DOM já renderizado.
-
-### Categorização automática
-`js/utils/categorizer.js` — array `REGRAS` com `{ cat, keywords }`. A **ordem importa**: regras mais específicas primeiro. Correspondência case-insensitive na descrição completa.
-
-## Regras invioláveis
-
-- **Nunca usar `localStorage`** — persistência exclusivamente em IndexedDB.
-- **Nunca adicionar backend** — app 100% client-side.
-- **Nunca trocar a stack** (sem framework JS, sem build tool).
-- **`seed.js` deve ficar vazio** na versão pública — dados entram via importação de PDF ou formulários inline.
-- **Não reintroduzir dados pessoais** em nenhum arquivo commitado.
-- **Não editar arquivos gerados** — não existem arquivos `.g.dart` ou similares, mas nunca comprometer dados do usuário hardcoded.
-
-## Stores do IndexedDB (`gastos_db_public` v2)
-
-| Store | keyPath | Limpo por `clearAllImported`? |
-|---|---|---|
-| `assinaturas` | `id` (auto) | ❌ |
-| `observacoes` | `id` (auto) | ❌ |
-| `despesas_fixas` | `id` (auto) | ❌ |
-| `orcamentos` | `cat` | ❌ |
-| `lancamentos` | `id` (auto) | ✅ |
-| `extrato_transacoes` | `id` (auto) | ✅ |
-| `extrato_summary` | `mes` (string) | ✅ |
-| `pdfs_importados` | `hash` (SHA-256) | ✅ |
-
-## Dependências CDN (fixas — não atualizar sem testar)
-
-- PDF.js `4.2.67` — `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.mjs`
-- Chart.js `4.4.1` — via CDN no `index.html`
-
-## Deploy
-
-```bash
-git add .
-git commit -m "descrição"
-git push
-```
-
-GitHub Pages publica automaticamente a partir do branch `main` (raiz `/`). O arquivo `.nojekyll` é obrigatório para evitar processamento Jekyll.
+- Keep the stack fixed: vanilla JS ES modules, IndexedDB, Chart.js via CDN, PDF.js via CDN. Do not add frameworks, backend services, build tooling, or `localStorage`.
+- `js/seed.js` must stay empty in the public version. The repo should not ship personal data or real seeds.
+- `refreshDashboard()` in `js/app.js` serializes refreshes with `_refreshChain`. After changing persisted data, prefer `window.refreshDashboard()` over partial manual rerenders.
+- The public `window` API is contractual because `index.html` calls it inline. Current names are `switchTab`, `filterLancamentos`, `sortLancamentosBy`, `clearLancamentosFilters`, `filterExtrato`, `clearExtratoFilters`, `recalcularProjecao`, `clearBase`, `clearAllDashboardData`, `refreshDashboard`, `selectEmoji`, `syncEmojiPicker`, and `toggleEmojiPicker`.
+- Views render with `innerHTML`. Any user/imported text inserted into markup should be escaped with `escapeHtml()` from `js/utils/dom.js`.
+- Filters in the `lancamentos` and `extrato` tabs operate on the already-rendered DOM, not by re-querying IndexedDB.
+- `js/db.js` stores are the source of truth. Current schema includes manual data (`assinaturas`, `observacoes`, `despesas_fixas`, `orcamentos`), imported banking data (`lancamentos`, `extrato_transacoes`, `extrato_summary`, `pdfs_importados`), and suggestion/Registrato state (`assinatura_sugestoes_dispensa`, `registrato_sugestoes_dispensa`, `registrato_scr_snapshot`, `registrato_scr_resumo_mensal`).
+- `clearAllImported()` is intentionally narrower than `clearAllDashboardData()`: it clears imported banking/Registrato data but preserves manual configuration like `assinaturas` and `despesas_fixas`.
+- Category heuristics and Registrato suggestions are order-sensitive. When changing keyword/product/institution rules, preserve evaluation order and prefer adding isolated cases over broadening existing ones.
+- The current parser hot spot is `js/parsers/itau-fatura.js`, especially Uniclass/Signature variants and OCR-broken layouts. Keep fixes isolated to the Itaú profile/parser flow instead of weakening global PDF parsing.
+- CDN versions are intentionally fixed in source (`Chart.js 4.4.1`, `PDF.js 4.2.67`). Treat upgrades as behavior changes that need browser validation.

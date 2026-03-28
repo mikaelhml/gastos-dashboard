@@ -65,21 +65,21 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DATA-01 | Phase TBD | Pending |
-| DATA-02 | Phase TBD | Pending |
-| DATA-03 | Phase TBD | Pending |
-| ANLY-01 | Phase TBD | Pending |
-| ANLY-02 | Phase TBD | Pending |
-| PROJ-01 | Phase TBD | Pending |
-| PROJ-02 | Phase TBD | Pending |
-| CATG-01 | Phase TBD | Pending |
-| CATG-02 | Phase TBD | Pending |
-| CATG-03 | Phase TBD | Pending |
+| DATA-01 | Phase 1 | Pending |
+| DATA-02 | Phase 1 | Pending |
+| DATA-03 | Phase 1 | Pending |
+| ANLY-01 | Phase 2 | Pending |
+| ANLY-02 | Phase 2 | Pending |
+| PROJ-01 | Phase 3 | Pending |
+| PROJ-02 | Phase 3 | Pending |
+| CATG-01 | Phase 4 | Pending |
+| CATG-02 | Phase 4 | Pending |
+| CATG-03 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 10 total
-- Mapped to phases: 0
-- Unmapped: 10 ⚠️
+- Mapped to phases: 10
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-28*

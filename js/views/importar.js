@@ -36,6 +36,24 @@ export async function buildImportar() {
   }
 }
 
+function openFilePicker(fileInput) {
+  if (!fileInput) return;
+
+  fileInput.value = '';
+
+  if (typeof fileInput.showPicker === 'function') {
+    try {
+      fileInput.showPicker();
+      return;
+    } catch {
+      // Fallback para browsers que expõem showPicker mas bloqueiam a chamada.
+    }
+  }
+
+  fileInput.focus({ preventScroll: true });
+  fileInput.click();
+}
+
 async function refreshStatus() {
   const counts = await getStoreCounts();
   const grid = document.getElementById('dbStatusGrid');
@@ -95,8 +113,7 @@ function _bindConfigSection() {
   });
 
   importButton.addEventListener('click', () => {
-    fileInput.value = '';
-    fileInput.click();
+    openFilePicker(fileInput);
   });
 
   fileInput.addEventListener('change', async () => {
@@ -142,8 +159,7 @@ function _bindFullBackupSection() {
   });
 
   importButton.addEventListener('click', () => {
-    fileInput.value = '';
-    fileInput.click();
+    openFilePicker(fileInput);
   });
 
   fileInput.addEventListener('change', async () => {
@@ -189,19 +205,19 @@ function _bindDropZone() {
   if (!zone || !input || !button) return;
 
   zone.addEventListener('click', () => {
-    if (!_importando) input.click();
+    if (!_importando) openFilePicker(input);
   });
 
   button.addEventListener('click', event => {
     event.stopPropagation();
-    if (!_importando) input.click();
+    if (!_importando) openFilePicker(input);
   });
 
   zone.addEventListener('keydown', event => {
     if (_importando) return;
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      input.click();
+      openFilePicker(input);
     }
   });
 

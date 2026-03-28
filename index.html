@@ -815,7 +815,7 @@
       Arraste e solte o arquivo PDF aqui, ou clique para selecionar.<br>
       <span style="font-size:0.8rem;color:#4a5568">Suporta extratos, faturas e o Relatório Registrato/SCR por detecção automática do layout</span>
     </p>
-    <input type="file" id="pdfFileInput" accept=".pdf" multiple style="display:none">
+    <input type="file" id="pdfFileInput" class="file-input-hidden" accept=".pdf" multiple>
     <button type="button" id="dropZoneButton" class="btn-primary" style="margin-top:16px">
       📂 Selecionar PDF
     </button>
@@ -853,7 +853,7 @@
       <button id="fullBackupExportBtn" type="button" class="btn-primary">
         📤 Exportar backup completo (JSON)
       </button>
-      <input type="file" id="fullBackupFileInput" accept=".json,application/json" style="display:none">
+      <input type="file" id="fullBackupFileInput" class="file-input-hidden" accept=".json,application/json">
       <button id="fullBackupImportBtn" type="button" class="btn-primary">
         📥 Restaurar backup completo (JSON)
       </button>
@@ -870,7 +870,7 @@
       <button id="configExportBtn" type="button" class="btn-primary">
         📤 Exportar configuração manual (JSON)
       </button>
-      <input type="file" id="configFileInput" accept=".json,application/json" style="display:none">
+      <input type="file" id="configFileInput" class="file-input-hidden" accept=".json,application/json">
       <button id="configImportBtn" type="button" class="btn-primary">
         📥 Importar configuração manual (JSON)
       </button>

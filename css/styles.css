@@ -774,6 +774,18 @@ tr.row-contexto-scr td:first-child { border-left: 3px solid #805ad5; }
   cursor: not-allowed;
 }
 
+.file-input-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Barra de progresso de importação */
 .import-progress-wrap {
   background: #2d3748; border-radius: 99px; height: 6px;

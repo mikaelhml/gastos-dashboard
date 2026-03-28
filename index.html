@@ -801,48 +801,44 @@
   <div class="changelog-list">
     <div class="surface-panel changelog-card">
       <div class="changelog-card-header">
-        <span class="changelog-card-title">Fase 9</span>
+        <span class="changelog-card-title">Fase 2 — Analytics Foundation</span>
         <span style="font-size:0.75rem;background:#276749;color:#68d391;padding:2px 10px;border-radius:20px">Mar/2026 · atual</span>
       </div>
       <ul class="changelog-card-list">
-        <li>🎨 Refinamento visual do dashboard com header mais legivel, abas mais claras, superfícies elevadas e hierarquia melhor entre cards, tabelas e paineis</li>
-        <li>🧭 Aba <code>Projeção</code> ganhou visual mais coeso, com bloco principal reorganizado para leitura e edição mais rapidas</li>
-        <li>📥 Aba <code>Importar</code> e cards de <code>Novidades</code> foram padronizados para um visual mais consistente e profissional</li>
-        <li>🏛️ Aba <code>Registrato</code> foi integrada ao novo sistema visual sem misturar SCR com extrato ou fatura</li>
-        <li>🗄️ Correção de migração do IndexedDB: a base agora sobe para <code>DB_VERSION = 5</code> e cria automaticamente a store <code>registrato_sugestoes_dispensa</code> em navegadores com base antiga</li>
-        <li>🛠️ Correção do erro de inicialização <code>NotFoundError</code> causado por store ausente em instalações já existentes do app</li>
+        <li>📈 A aba <code>Lançamentos</code> agora mostra um painel analítico com tendência multi-mês por categoria usando gastos importados de cartão + conta</li>
+        <li>🔀 O comparativo mensal destaca as maiores altas e quedas entre o último mês importado e o mês anterior, com deltas visíveis e rótulos como <code>novo gasto</code> e <code>zerado</code></li>
+        <li>🧠 A análise exclui automaticamente pagamentos de <code>Fatura Crédito</code> lançados na conta para evitar contagem dupla entre compra no cartão e pagamento da fatura</li>
+        <li>⚠️ Quando a categoria <code>Outros</code> pesa demais no total, o painel admite isso com aviso explícito em vez de esconder a baixa qualidade de categorização</li>
+        <li>🔎 A busca textual e os filtros existentes de <code>Lançamentos</code> continuam funcionando como antes, agora sem recalcular o painel analítico a cada tecla</li>
+        <li>🧪 A base ganhou cobertura automatizada para ordenação de meses, agregação por categoria, exclusão de duplicidade contábil e cálculo de movimentação mês contra mês</li>
       </ul>
     </div>
 
     <div class="surface-panel changelog-card">
       <div class="changelog-card-header">
-        <span class="changelog-card-title">Fase 8</span>
+        <span class="changelog-card-title">Fase 1 — Data Safety & Import Reliability</span>
         <span style="font-size:0.75rem;background:#2d3748;color:#a0aec0;padding:2px 10px;border-radius:20px">Mar/2026</span>
       </div>
       <ul class="changelog-card-list">
-        <li>💡 Aba <code>Assinaturas</code> agora sugere conversão automática quando o mesmo lançamento aparece em <strong>2 meses ou mais</strong> com o mesmo valor</li>
-        <li>⚡ Cada sugestão pode ser resolvida com ação rápida <code>Sim</code> ou <code>Não mostrar</code>, sem depender do modal da aba <code>Lançamentos</code></li>
-        <li>🧠 Sugestões recusadas ou já aceitas deixam de reaparecer automaticamente graças à persistência local no IndexedDB</li>
-        <li>🏛️ Nova aba <code>Registrato</code> consolida histórico mensal, instituições detectadas, fila de sugestões e operações detalhadas do SCR</li>
-        <li>🧹 Aba <code>Importar</code> ganhou um novo botão para limpar a base completa, mantendo o botão antigo de limpar apenas os dados importados</li>
-        <li>📊 Cards do topo da <code>Visão Geral</code> voltaram a ser preenchidos corretamente, incluindo totais mensais, projeção anual e saldo devedor</li>
+        <li>🛡️ Reimportar faturas e extratos deixou de apagar dados de outras origens no mesmo período, reduzindo o principal risco de corrupção da base</li>
+        <li>📤 A aba <code>Importar</code> agora exporta um backup completo em JSON com todas as stores do IndexedDB, incluindo transações, Registrato e configurações</li>
+        <li>📥 Também ficou possível restaurar esse backup completo com validação antes de substituir a base local</li>
+        <li>🏷️ Cada importação passou a mostrar um badge de confiança com contagem importada e um painel de avisos para linhas com leitura incerta ou descartada</li>
+        <li>🧰 Os parsers de Nubank, Itaú e Registrato foram alinhados para devolver resultado mais honesto, com qualidade e <code>warnings</code> padronizados</li>
+        <li>🧪 O projeto ganhou uma primeira suíte de testes automatizados cobrindo integridade de reimportação, feedback de importação e backup/restauração completos</li>
       </ul>
     </div>
 
     <div class="surface-panel changelog-card">
       <div class="changelog-card-header">
-        <span class="changelog-card-title">Fase 7</span>
+        <span class="changelog-card-title">Histórico anterior</span>
         <span style="font-size:0.75rem;background:#2d3748;color:#a0aec0;padding:2px 10px;border-radius:20px">Mar/2026</span>
       </div>
       <ul class="changelog-card-list">
-        <li>🧭 Parser Itaú agora roteia por perfil interno para separar faturas domésticas clássicas, multi-cartão e internacionais</li>
-        <li>🌍 Novo suporte a fatura Itaú internacional/Black com leitura dedicada da seção <code>Lançamentos internacionais</code></li>
-        <li>💱 O parser internacional usa o valor final em reais e ignora corretamente IOF, subtotais e blocos financeiros laterais</li>
-        <li>🏷️ Detecção ampliada de perfil Itaú com suporte a âncoras como <code>MASTERCARD</code>, <code>BLACK</code>, <code>USD</code> e <code>Dólar de Conversão</code></li>
-        <li>🧪 Validação com PDFs reais para confirmar o roteamento dos novos layouts Itaú adicionados na pasta de testes</li>
-        <li>🧱 Conversão para despesa fixa, parcelamento e financiamento agora salva o schema correto, evitando itens sem descrição</li>
-        <li>🛡️ Despesas fixas antigas/importadas são normalizadas automaticamente com compatibilidade entre <code>desc</code>, <code>nome</code> e <code>parcelas</code></li>
-        <li>🔎 Parser Itaú multi-cartão passou a preservar a origem de cada linha e bloquear lançamentos contaminados com descrição numérica</li>
+        <li>🏛️ O app já consolidava histórico e sugestões do Registrato/SCR em aba dedicada, sem misturar SCR com extrato ou fatura</li>
+        <li>💡 Sugestões automáticas de assinatura e despesas/parcelas já haviam sido integradas ao fluxo manual do dashboard</li>
+        <li>🌍 Os importadores anteriores já incluíam refinamentos em layouts Itaú/Nubank e melhorias visuais em várias abas do produto</li>
+        <li>📚 As entregas mais recentes agora passam a ser registradas acima por fase concluída, deixando a aba <code>Novidades</code> mais alinhada ao roadmap real do projeto</li>
       </ul>
     </div>
 

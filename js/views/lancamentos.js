@@ -6,7 +6,9 @@ import { enriquecerCanal, getCanalMeta, inferirCanal, listarCanais } from '../ut
 let _lancamentos = [];
 let _dialogBound = false;
 let _editDialogBound = false;
+let _analyticsChart = null;
 let _sortState = { key: 'data', direction: 'desc' };
+const ANALYTICS_COLORS = ['#fc8181', '#63b3ed', '#68d391', '#f6e05e', '#b794f4', '#f6ad55', '#76e4f7', '#fbb6ce', '#90cdf4', '#a0aec0'];
 
 function parseDataTs(data) {
   const parts = String(data ?? '').split('/');
@@ -64,6 +66,7 @@ export function initLancamentos(lancamentos, extratoTransacoes = [], _assinatura
 
   bindConvertDialog();
   bindEditDialog();
+  renderLancamentosAnalytics(context.analytics || null);
   buildLancamentosContextPanel(context.cardBillSummaries || [], contextRows);
   renderLancamentos(getSortedLancamentos(_lancamentos));
 }
@@ -357,6 +360,172 @@ function buildLancamentosContextPanel(cardBillSummaries, contextRows) {
       ${contextRows.length ? `<span class="badge badge-purple">🏛️ ${contextRows.length} competência(s) do SCR refletidas nas faturas importadas</span>` : ''}
     </div>
   `;
+}
+
+function renderLancamentosAnalytics(analytics) {
+  const panel = document.getElementById('lancamentosAnalyticsPanel');
+  const summary = document.getElementById('lancamentosAnalyticsSummary');
+  const movers = document.getElementById('lancamentosAnalyticsMovers');
+  const quality = document.getElementById('lancamentosAnalyticsQuality');
+
+  if (!panel || !summary || !movers || !quality) return;
+
+  if (_analyticsChart) {
+    _analyticsChart.destroy();
+    _analyticsChart = null;
+  }
+
+  if (!analytics || !analytics.months?.length) {
+    panel.style.display = '';
+    summary.innerHTML = `
+      <div class="empty-state lancamentos-analytics-empty">
+        <strong>Sem histórico suficiente para analytics</strong>
+        Importe meses de cartão e/ou conta para montar a tendência por categoria nesta aba.
+      </div>
+    `;
+    quality.innerHTML = '<span class="badge badge-gray">Aguardando dados</span>';
+    movers.innerHTML = '';
+    return;
+  }
+
+  panel.style.display = '';
+
+  summary.innerHTML = `
+    <div class="lancamentos-analytics-cards">
+      <div class="card" style="--accent:#63b3ed">
+        <div class="label">Meses analisados</div>
+        <div class="value">${analytics.months.length}</div>
+        <div class="sub">${escapeHtml(analytics.months[0])} → ${escapeHtml(analytics.months[analytics.months.length - 1])}</div>
+      </div>
+      <div class="card" style="--accent:#fc8181">
+        <div class="label">Gasto analisado</div>
+        <div class="value">${fmt(analytics.totalSpend)}</div>
+        <div class="sub">Somente saídas reais de cartão + conta</div>
+      </div>
+      <div class="card" style="--accent:#b794f4">
+        <div class="label">Categorias visíveis</div>
+        <div class="value">${analytics.categories.length}</div>
+        <div class="sub">${escapeHtml(analytics.latestMonth || analytics.months[analytics.months.length - 1])}</div>
+      </div>
+    </div>
+  `;
+
+  if (analytics.quality?.shouldWarn) {
+    quality.innerHTML = `<div class="lancamentos-analytics-quality-box is-warning">⚠️ ${escapeHtml(analytics.quality.note)}</div>`;
+  } else {
+    quality.innerHTML = '<span class="badge badge-green">Qualidade de categorização estável</span>';
+  }
+
+  movers.innerHTML = buildMoversMarkup(analytics);
+  renderAnalyticsChart(analytics);
+}
+
+function buildMoversMarkup(analytics) {
+  if (!analytics.previousMonth || !analytics.latestMonth) {
+    return `
+      <div class="empty-state lancamentos-analytics-empty">
+        <strong>Comparativo mensal indisponível</strong>
+        É preciso ter pelo menos dois meses importados para mostrar altas e quedas.
+      </div>
+    `;
+  }
+
+  if (!analytics.movers?.length) {
+    return `
+      <div class="empty-state lancamentos-analytics-empty">
+        <strong>Sem variações detectadas</strong>
+        Os meses ${escapeHtml(analytics.previousMonth)} e ${escapeHtml(analytics.latestMonth)} não trouxeram mudanças relevantes.
+      </div>
+    `;
+  }
+
+  return `
+    <div class="lancamentos-movers-period">
+      ${escapeHtml(analytics.previousMonth)} → ${escapeHtml(analytics.latestMonth)}
+    </div>
+    <div class="lancamentos-movers-list">
+      ${analytics.movers.slice(0, 8).map(item => {
+        const toneClass = item.delta > 0 || item.status === 'new'
+          ? 'is-up'
+          : item.delta < 0 || item.status === 'zeroed'
+            ? 'is-down'
+            : 'is-flat';
+        const deltaPrefix = item.delta > 0 ? '+' : '';
+        const pctLabel = item.note
+          ? item.note
+          : item.pct == null
+            ? 'sem base comparável'
+            : `${item.pct > 0 ? '+' : ''}${item.pct.toFixed(0)}%`;
+
+        return `
+          <div class="lancamentos-mover ${toneClass}">
+            <div>
+              <div class="lancamentos-mover-cat">${escapeHtml(item.cat)}</div>
+              <div class="lancamentos-mover-meta">
+                ${fmt(item.previous)} → ${fmt(item.current)}
+              </div>
+            </div>
+            <div class="lancamentos-mover-delta">
+              <strong>${deltaPrefix}${fmt(item.delta)}</strong>
+              <span>${escapeHtml(pctLabel)}</span>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function renderAnalyticsChart(analytics) {
+  const canvas = document.getElementById('lancamentosAnalyticsChart');
+  if (!canvas || typeof Chart === 'undefined') return;
+
+  _analyticsChart = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: analytics.months,
+      datasets: analytics.trendDatasets.map((dataset, index) => ({
+        label: dataset.label,
+        data: dataset.data,
+        backgroundColor: ANALYTICS_COLORS[index % ANALYTICS_COLORS.length],
+        borderRadius: 6,
+        borderSkipped: false,
+      })),
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            color: '#a0aec0',
+            boxWidth: 12,
+            font: { size: 11 },
+          },
+        },
+        tooltip: {
+          callbacks: {
+            label: context => ` ${context.dataset.label}: ${fmt(context.raw)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          stacked: true,
+          ticks: { color: '#a0aec0' },
+          grid: { color: '#2d3748' },
+        },
+        y: {
+          stacked: true,
+          ticks: {
+            color: '#a0aec0',
+            callback: value => fmt(Number(value)),
+          },
+          grid: { color: '#2d3748' },
+        },
+      },
+    },
+  });
 }
 
 function bindActionButtons() {

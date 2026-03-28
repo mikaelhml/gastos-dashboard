@@ -24,6 +24,7 @@ import { buildImportar, clearBase, clearAllDashboardData }     from './views/imp
 import { buildRegistratoSuggestions, computeRegistratoInsights }   from './utils/registrato-suggestions.js';
 import { extrairParcelaFinal } from './parsers/pdf-utils.js';
 import { buildCardBillSummaries, buildRegistratoContextRows } from './utils/dashboard-context.js';
+import { buildSpendAnalytics } from './utils/analytics.js';
 
 let _refreshChain = Promise.resolve();
 const REGISTRATO_VALUE_FIELDS = ['emDia', 'vencida', 'outrosCompromissos', 'creditoALiberar', 'coobrigacoes', 'limite'];
@@ -206,6 +207,10 @@ async function renderDashboard() {
   });
   const registratoInsights = computeRegistratoInsights(registratoResumos, registratoSuggestions);
   const cardBillSummaries = buildCardBillSummaries(lancamentos);
+  const spendAnalytics = buildSpendAnalytics({
+    lancamentos,
+    extratoTransacoes,
+  });
   const extratoContextRows = buildRegistratoContextRows(
     registratoResumos,
     [...new Set(extratoTransacoes.map(item => item?.mes).filter(Boolean))],
@@ -222,6 +227,7 @@ async function renderDashboard() {
   buildDespesasFixas(despesasFixas, registratoSuggestions);
   buildParcelamentos(despesasFixas, lancamentos);
   initLancamentos(lancamentos, extratoTransacoes, assinaturas, despesasFixas, {
+    analytics: spendAnalytics,
     cardBillSummaries,
     registratoContextRows: lancamentosContextRows,
   });

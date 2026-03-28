@@ -310,6 +310,32 @@
 
 <!-- ── LANÇAMENTOS─────────────────────────────────────────────────────────── -->
 <div id="tab-lancamentos" class="tab-content" role="tabpanel" aria-labelledby="tab-button-lancamentos">
+  <div id="lancamentosAnalyticsPanel" class="helper-panel lancamentos-analytics-panel">
+    <div class="helper-panel-header">
+      <div>
+        <h3>📈 Tendência por categoria</h3>
+        <p>Resumo mensal unificado de cartão + conta, com foco no gasto real importado sem contar o pagamento da fatura duas vezes.</p>
+      </div>
+    </div>
+    <div id="lancamentosAnalyticsSummary" class="lancamentos-analytics-summary"></div>
+    <div class="lancamentos-analytics-grid">
+      <div class="chart-box lancamentos-analytics-chart-box">
+        <h3>Evolução por mês</h3>
+        <canvas id="lancamentosAnalyticsChart"></canvas>
+      </div>
+      <div class="surface-panel lancamentos-movers-panel">
+        <div class="lancamentos-movers-header">
+          <div>
+            <div class="section-eyebrow">Comparativo mensal</div>
+            <h3>Maiores mudanças</h3>
+          </div>
+          <div id="lancamentosAnalyticsQuality" class="lancamentos-analytics-quality"></div>
+        </div>
+        <div id="lancamentosAnalyticsMovers"></div>
+      </div>
+    </div>
+  </div>
+  <div id="lancamentosContextPanel" class="helper-panel" style="display:none"></div>
   <div class="filters">
     <input type="text" id="searchInput" placeholder="🔍 Buscar por descrição..." aria-label="Buscar lançamentos por descrição" oninput="filterLancamentos()">
     <select id="filterFatura" aria-label="Filtrar lançamentos por fatura" onchange="filterLancamentos()"></select>
@@ -334,7 +360,6 @@
     </select>
     <button type="button" class="btn-inline-secondary btn-filter-clear" onclick="clearLancamentosFilters()">Limpar filtros</button>
   </div>
-  <div id="lancamentosContextPanel" class="helper-panel" style="display:none"></div>
   <div class="table-wrap">
     <table>
       <thead>

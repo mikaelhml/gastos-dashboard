@@ -1,6 +1,6 @@
 import { addItem, getAll, bulkAdd, deleteItem } from '../db.js';
-import { categorizar } from '../utils/categorizer.js';
 import { inferirCanal } from '../utils/transaction-tags.js';
+import { applyCategorizationToImportedRows, buildCategorizationRuntime } from '../utils/categorization-engine.js';
 import {
   buildImportQuality,
   buildLancamentoFingerprint,
@@ -108,7 +108,17 @@ export async function importarItauFatura(file, onProgress = () => {}) {
 
   const mesFatura = extrairMesFaturaItau(linhas);
   const profile = detectarPerfilFaturaItau(linhas);
-  const lancamentos = parsearLancamentosItau(linhasColunadas, grupos, linhasRaw, paginas, mesFatura, profile);
+  const rawLancamentos = parsearLancamentosItau(linhasColunadas, grupos, linhasRaw, paginas, mesFatura, profile);
+  const [rules, memories] = await Promise.all([
+    getAll('categorizacao_regras'),
+    getAll('categorizacao_memoria'),
+  ]);
+  const categorizationRuntime = buildCategorizationRuntime({ rules, memories });
+  const lancamentos = applyCategorizationToImportedRows(
+    rawLancamentos,
+    categorizationRuntime,
+    { source: 'cartao', direction: 'saida' },
+  );
   console.log(
     `[itau-fatura] "${file.name}": ${lancamentos.length} lançamentos, fatura=${mesFatura || 'não identificada'}, perfil=${profile}`
   );
@@ -945,8 +955,7 @@ function parseTransactionLine(text, mesFatura, sourceKey = '') {
     data: dataInfo.data,
     fatura: mesFatura || dataInfo.mes,
     desc,
-    cat: categorizar(desc),
-    canal: inferirCanal({ desc, source: 'cartao' }),
+      canal: inferirCanal({ desc, source: 'cartao' }),
     valor,
     ...(parcelaInfo ? { parcela: parcelaInfo.parcela, totalCompra: null } : {}),
     _sourceKey: sourceKey,

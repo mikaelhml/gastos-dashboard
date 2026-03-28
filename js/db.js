@@ -13,7 +13,7 @@
  */
 
 export const DB_NAME = 'gastos_db_public';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 const STORE_DEFS = [
   { name: 'assinaturas',          keyPath: 'id',   autoIncrement: true  },
@@ -25,12 +25,34 @@ const STORE_DEFS = [
   { name: 'pdfs_importados',      keyPath: 'hash', autoIncrement: false },
   { name: 'orcamentos',           keyPath: 'cat',  autoIncrement: false },
   { name: 'assinatura_sugestoes_dispensa', keyPath: 'key', autoIncrement: false },
+  { name: 'categorizacao_regras', keyPath: 'id', autoIncrement: true },
+  { name: 'categorizacao_memoria', keyPath: 'key', autoIncrement: false },
   { name: 'registrato_sugestoes_dispensa', keyPath: 'key', autoIncrement: false },
   { name: 'registrato_scr_snapshot', keyPath: 'id', autoIncrement: false },
   { name: 'registrato_scr_resumo_mensal', keyPath: 'mesRef', autoIncrement: false },
 ];
 
 export const FULL_BACKUP_STORE_NAMES = STORE_DEFS.map(store => store.name);
+export const FULL_BACKUP_OPTIONAL_EMPTY_STORE_NAMES = ['categorizacao_regras', 'categorizacao_memoria'];
+export const CLEAR_IMPORTED_STORE_NAMES = [
+  'extrato_transacoes',
+  'extrato_summary',
+  'lancamentos',
+  'pdfs_importados',
+  'assinatura_sugestoes_dispensa',
+  'registrato_sugestoes_dispensa',
+  'registrato_scr_snapshot',
+  'registrato_scr_resumo_mensal',
+];
+export const CLEAR_ALL_DATA_STORE_NAMES = [
+  ...CLEAR_IMPORTED_STORE_NAMES,
+  'assinaturas',
+  'despesas_fixas',
+  'observacoes',
+  'orcamentos',
+  'categorizacao_regras',
+  'categorizacao_memoria',
+];
 
 let _db = null;
 
@@ -153,29 +175,15 @@ export async function seedIfEmpty(seedData) {
  * Mantém assinaturas e despesas_fixas intactas.
  */
 export async function clearAllImported() {
-  await clearStore('extrato_transacoes');
-  await clearStore('extrato_summary');
-  await clearStore('lancamentos');
-  await clearStore('pdfs_importados');
-  await clearStore('assinatura_sugestoes_dispensa');
-  await clearStore('registrato_sugestoes_dispensa');
-  await clearStore('registrato_scr_snapshot');
-  await clearStore('registrato_scr_resumo_mensal');
+  for (const storeName of CLEAR_IMPORTED_STORE_NAMES) {
+    await clearStore(storeName);
+  }
 }
 
 export async function clearAllData() {
-  await clearStore('extrato_transacoes');
-  await clearStore('extrato_summary');
-  await clearStore('lancamentos');
-  await clearStore('pdfs_importados');
-  await clearStore('assinaturas');
-  await clearStore('despesas_fixas');
-  await clearStore('observacoes');
-  await clearStore('orcamentos');
-  await clearStore('assinatura_sugestoes_dispensa');
-  await clearStore('registrato_sugestoes_dispensa');
-  await clearStore('registrato_scr_snapshot');
-  await clearStore('registrato_scr_resumo_mensal');
+  for (const storeName of CLEAR_ALL_DATA_STORE_NAMES) {
+    await clearStore(storeName);
+  }
 }
 
 // ── Contagens para status ─────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import { addItem, getAll, bulkAdd, deleteItem } from '../db.js';
-import { categorizar } from '../utils/categorizer.js';
 import { inferirCanal } from '../utils/transaction-tags.js';
+import { applyCategorizationToImportedRows, buildCategorizationRuntime } from '../utils/categorization-engine.js';
 import {
   buildImportQuality,
   buildLancamentoFingerprint,
@@ -65,8 +65,18 @@ export async function importarNubankFatura(file, onProgress = () => {}) {
   }
 
   const mesFatura = extrairMesFatura(linhas);
+  const [rules, memories] = await Promise.all([
+    getAll('categorizacao_regras'),
+    getAll('categorizacao_memoria'),
+  ]);
+  const categorizationRuntime = buildCategorizationRuntime({ rules, memories });
   onProgress(60);
-  const { lancamentos, parseWarnings } = parsearLancamentos(linhas, mesFatura);
+  const { lancamentos: rawLancamentos, parseWarnings } = parsearLancamentos(linhas, mesFatura);
+  const lancamentos = applyCategorizationToImportedRows(
+    rawLancamentos,
+    categorizationRuntime,
+    { source: 'cartao', direction: 'saida' },
+  );
 
   console.log(`[nubank-fatura] "${file.name}": ${lancamentos.length} lançamentos, fatura=${mesFatura || 'não identificada'}`);
 
@@ -281,7 +291,6 @@ function parsearLancamentos(linhas, mesFatura) {
       data: dataInfo.data,
       fatura: mesFatura || dataInfo.mes,
       desc,
-      cat: categorizar(desc),
       canal: inferirCanal({ desc, source: 'cartao' }),
       valor,
       ...(parcela ? { parcela, totalCompra: null } : {}),

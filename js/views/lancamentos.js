@@ -2,12 +2,16 @@ import { fmt } from '../utils/formatters.js';
 import { addItem, putItem, deleteItem } from '../db.js';
 import { escapeHtml } from '../utils/dom.js';
 import { enriquecerCanal, getCanalMeta, inferirCanal, listarCanais } from '../utils/transaction-tags.js';
+import { buildCategoryMemoryRecord, normalizeCategoryText, sortCategorizationRules } from '../utils/categorization-engine.js';
 
 let _lancamentos = [];
 let _dialogBound = false;
 let _editDialogBound = false;
+let _categorizationDialogBound = false;
 let _analyticsChart = null;
 let _sortState = { key: 'data', direction: 'desc' };
+let _categorizationRules = [];
+let _categorizationMemories = [];
 const ANALYTICS_COLORS = ['#fc8181', '#63b3ed', '#68d391', '#f6e05e', '#b794f4', '#f6ad55', '#76e4f7', '#fbb6ce', '#90cdf4', '#a0aec0'];
 
 function parseDataTs(data) {
@@ -40,6 +44,14 @@ export function initLancamentos(lancamentos, extratoTransacoes = [], _assinatura
 
   const cartaoNorm = lancamentos.map(l => enriquecerCanal({ ...l, source: 'cartao' }));
   const contextRows = (context.registratoContextRows || []).map(item => ({ ...item }));
+  _categorizationRules = sortCategorizationRules(context.categorizationRules || []).map(rule => ({
+    ...rule,
+    enabled: rule?.enabled !== false,
+  }));
+  _categorizationMemories = (context.categorizationMemories || []).map(memory => ({
+    ...memory,
+    enabled: memory?.enabled !== false,
+  }));
 
   // Mescla e ordena por data decrescente
   _lancamentos = [...cartaoNorm, ...extratoNorm, ...contextRows].sort((a, b) => parseDataTs(b.data) - parseDataTs(a.data));
@@ -66,8 +78,10 @@ export function initLancamentos(lancamentos, extratoTransacoes = [], _assinatura
 
   bindConvertDialog();
   bindEditDialog();
+  bindCategorizationDialog();
   renderLancamentosAnalytics(context.analytics || null);
   buildLancamentosContextPanel(context.cardBillSummaries || [], contextRows);
+  renderCategorizationPanel();
   renderLancamentos(getSortedLancamentos(_lancamentos));
 }
 
@@ -362,6 +376,338 @@ function buildLancamentosContextPanel(cardBillSummaries, contextRows) {
   `;
 }
 
+function renderCategorizationPanel() {
+  const panel = document.getElementById('lancamentosCategorizationPanel');
+  const summary = document.getElementById('categorizationRulesSummary');
+  if (!panel || !summary) return;
+
+  const enabledRules = _categorizationRules.filter(rule => rule.enabled !== false).length;
+  const enabledMemories = _categorizationMemories.filter(memory => memory.enabled !== false).length;
+
+  panel.style.display = '';
+  summary.innerHTML = `
+    <span class="badge badge-blue">🧩 ${enabledRules}/${_categorizationRules.length} regra(s) ativa(s)</span>
+    <span class="badge badge-purple">🧠 ${enabledMemories}/${_categorizationMemories.length} correção(ões) ativa(s)</span>
+    <span class="badge badge-gray">Ordem: memória → regra explícita → padrão → Outros</span>
+  `;
+}
+
+function getKnownCategories() {
+  return [...new Set([
+    ...Object.keys(CAT_COLORS).filter(cat => cat !== 'Contexto SCR'),
+    ..._lancamentos.map(item => normalizeCategoryText(item?.cat)).filter(Boolean),
+    ..._categorizationRules.map(rule => normalizeCategoryText(rule?.category)).filter(Boolean),
+    ..._categorizationMemories.map(memory => normalizeCategoryText(memory?.category)).filter(Boolean),
+  ])].sort((left, right) => left.localeCompare(right, 'pt-BR', { sensitivity: 'base' }));
+}
+
+function populateCategorizationCategorySelect(selectedCategory = '') {
+  const selectEl = document.getElementById('categorizationRuleCategorySelect');
+  if (!selectEl) return;
+
+  const normalizedSelected = normalizeCategoryText(selectedCategory);
+  const knownCategories = getKnownCategories();
+  const hasKnownMatch = normalizedSelected && knownCategories.includes(normalizedSelected);
+
+  selectEl.innerHTML = `
+    <option value="">Selecione uma categoria</option>
+    ${knownCategories.map(category => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join('')}
+    <option value="__custom__">+ Nova categoria</option>
+  `;
+
+  if (hasKnownMatch) {
+    selectEl.value = normalizedSelected;
+    setCategorizationCategoryMode('select', normalizedSelected);
+    return;
+  }
+
+  if (normalizedSelected) {
+    selectEl.value = '__custom__';
+    setCategorizationCategoryMode('custom', normalizedSelected);
+    return;
+  }
+
+  selectEl.value = '';
+  setCategorizationCategoryMode('select', '');
+}
+
+function setCategorizationCategoryMode(mode, customValue = '') {
+  const customField = document.getElementById('categorizationRuleCustomCategoryField');
+  const customInput = document.getElementById('categorizationRuleCustomCategory');
+  if (!customField || !customInput) return;
+
+  const isCustom = mode === 'custom';
+  customField.style.display = isCustom ? '' : 'none';
+  customInput.required = isCustom;
+  customInput.value = isCustom ? customValue : '';
+}
+
+function getCategorizationRuleCategoryValue() {
+  const selectEl = document.getElementById('categorizationRuleCategorySelect');
+  const customInput = document.getElementById('categorizationRuleCustomCategory');
+  if (!selectEl) return '';
+
+  if (selectEl.value === '__custom__') {
+    return normalizeCategoryText(customInput?.value || '');
+  }
+
+  return normalizeCategoryText(selectEl.value || '');
+}
+
+function bindCategorizationDialog() {
+  if (_categorizationDialogBound) return;
+  _categorizationDialogBound = true;
+
+  const dialog = document.getElementById('lancamentosCategorizationDialog');
+  const openBtn = document.getElementById('openLancamentosCategorizationDialog');
+  const closeTop = document.getElementById('lancamentosCategorizationCloseTop');
+  const closeBtn = document.getElementById('lancamentosCategorizationClose');
+  const form = document.getElementById('categorizationRuleForm');
+  const resetBtn = document.getElementById('categorizationRuleReset');
+  const categorySelect = document.getElementById('categorizationRuleCategorySelect');
+  const rulesList = document.getElementById('categorizationRulesList');
+  const memoryList = document.getElementById('categorizationMemoryList');
+  if (!dialog || !form || !categorySelect || !rulesList || !memoryList) return;
+
+  const close = () => {
+    dialog.close();
+    setFeedback('', '', 'categorizationRuleFormFeedback');
+  };
+  const refreshFromDb = async (message, reopenDialog = true) => {
+    const shouldReopen = reopenDialog && dialog.open;
+    if (shouldReopen) dialog.close();
+    await window.refreshDashboard?.();
+    setFeedback(message, 'success', 'categorizationRulesFeedback');
+    if (shouldReopen) {
+      renderCategorizationDialog();
+      dialog.showModal();
+    }
+  };
+
+  openBtn?.addEventListener('click', () => {
+    resetCategorizationRuleForm();
+    renderCategorizationDialog();
+    dialog.showModal();
+  });
+  closeTop?.addEventListener('click', close);
+  closeBtn?.addEventListener('click', close);
+  dialog.addEventListener('click', event => {
+    if (event.target === dialog) close();
+  });
+  resetBtn?.addEventListener('click', () => resetCategorizationRuleForm());
+  categorySelect.addEventListener('change', () => {
+    setCategorizationCategoryMode(
+      categorySelect.value === '__custom__' ? 'custom' : 'select',
+      '',
+    );
+  });
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+
+    const ruleId = document.getElementById('categorizationRuleId')?.value || '';
+    const pattern = document.getElementById('categorizationRulePattern')?.value.trim() || '';
+    const category = getCategorizationRuleCategoryValue();
+    const sourceScope = document.getElementById('categorizationRuleSource')?.value || 'all';
+    const directionScope = document.getElementById('categorizationRuleDirection')?.value || 'all';
+    const enabled = !!document.getElementById('categorizationRuleEnabled')?.checked;
+
+    if (!pattern || !category) {
+      setFeedback('Informe um padrão e uma categoria para salvar a regra.', 'error', 'categorizationRuleFormFeedback');
+      return;
+    }
+
+    const existingRule = _categorizationRules.find(rule => String(rule.id) === String(ruleId));
+    const nextPriority = existingRule?.priority
+      ?? (_categorizationRules.reduce((max, rule) => Math.max(max, Number(rule?.priority || 0)), 0) + 1);
+
+    const payload = {
+      ...(existingRule || {}),
+      ...(ruleId ? { id: existingRule?.id ?? Number(ruleId) } : {}),
+      pattern,
+      category,
+      sourceScope,
+      directionScope,
+      enabled,
+      priority: nextPriority,
+    };
+
+    if (existingRule) {
+      await putItem('categorizacao_regras', payload);
+    } else {
+      await addItem('categorizacao_regras', payload);
+    }
+
+    resetCategorizationRuleForm();
+    close();
+    await refreshFromDb('Regra de categorização salva.', false);
+  });
+
+  rulesList.addEventListener('click', async event => {
+    const button = event.target.closest('[data-rule-action]');
+    if (!button) return;
+
+    const ruleId = button.getAttribute('data-rule-id');
+    const action = button.getAttribute('data-rule-action');
+    const rule = _categorizationRules.find(item => String(item.id) === String(ruleId));
+    if (!rule) return;
+
+    if (action === 'edit') {
+      resetCategorizationRuleForm(rule);
+      return;
+    }
+
+    if (action === 'delete') {
+      if (!confirm(`Excluir a regra "${rule.pattern}"?`)) return;
+      await deleteItem('categorizacao_regras', rule.id);
+      await refreshFromDb('Regra removida.');
+      return;
+    }
+
+    if (action === 'toggle') {
+      await putItem('categorizacao_regras', { ...rule, enabled: rule.enabled === false });
+      await refreshFromDb(rule.enabled === false ? 'Regra ativada.' : 'Regra pausada.');
+      return;
+    }
+
+    if (action === 'move-up' || action === 'move-down') {
+      const ordered = sortCategorizationRules(_categorizationRules);
+      const currentIndex = ordered.findIndex(item => String(item.id) === String(ruleId));
+      const targetIndex = action === 'move-up' ? currentIndex - 1 : currentIndex + 1;
+      if (currentIndex < 0 || targetIndex < 0 || targetIndex >= ordered.length) return;
+
+      const nextOrder = [...ordered];
+      [nextOrder[currentIndex], nextOrder[targetIndex]] = [nextOrder[targetIndex], nextOrder[currentIndex]];
+      const normalizedOrder = sortCategorizationRules(nextOrder.map((item, index) => ({
+        ...item,
+        priority: index + 1,
+      })));
+      for (const item of normalizedOrder) {
+        await putItem('categorizacao_regras', item);
+      }
+      await refreshFromDb('Prioridade da regra atualizada.');
+    }
+  });
+
+  memoryList.addEventListener('click', async event => {
+    const button = event.target.closest('[data-memory-action]');
+    if (!button) return;
+
+    const action = button.getAttribute('data-memory-action');
+    const memoryKey = button.getAttribute('data-memory-key');
+    const memory = _categorizationMemories.find(item => String(item.key) === String(memoryKey));
+    if (!memory) return;
+
+    if (action === 'edit') {
+      const nextCategory = window.prompt('Nova categoria lembrada:', memory.category || '');
+      if (nextCategory == null) return;
+      const normalized = normalizeCategoryText(nextCategory);
+      if (!normalized) {
+        setFeedback('Informe uma categoria válida para a memória.', 'error', 'categorizationRuleFormFeedback');
+        return;
+      }
+      await putItem('categorizacao_memoria', { ...memory, category: normalized });
+      await refreshFromDb('Correção lembrada atualizada.');
+      return;
+    }
+
+    if (action === 'toggle') {
+      await putItem('categorizacao_memoria', { ...memory, enabled: memory.enabled === false });
+      await refreshFromDb(memory.enabled === false ? 'Correção lembrada ativada.' : 'Correção lembrada pausada.');
+      return;
+    }
+
+    if (action === 'delete') {
+      if (!confirm(`Excluir a correção lembrada para "${memory.descriptionNorm}"?`)) return;
+      await deleteItem('categorizacao_memoria', memory.key);
+      await refreshFromDb('Correção lembrada removida.');
+    }
+  });
+}
+
+function renderCategorizationDialog() {
+  const rulesList = document.getElementById('categorizationRulesList');
+  const memoryList = document.getElementById('categorizationMemoryList');
+  if (!rulesList || !memoryList) return;
+
+  populateCategorizationCategorySelect(getCategorizationRuleCategoryValue());
+
+  const orderedRules = sortCategorizationRules(_categorizationRules);
+  rulesList.innerHTML = orderedRules.length
+    ? orderedRules.map((rule, index) => `
+      <div class="categorization-list-item">
+        <div>
+          <div class="categorization-list-title">${escapeHtml(rule.pattern)}</div>
+          <div class="categorization-list-meta">
+            <span class="badge ${rule.enabled === false ? 'badge-gray' : 'badge-blue'}">${rule.enabled === false ? 'Pausada' : 'Ativa'}</span>
+            <span class="badge badge-purple">${escapeHtml(rule.category || 'Outros')}</span>
+            <span class="badge badge-gray">${escapeHtml(describeRuleScope(rule))}</span>
+            <span class="badge badge-gray">Prioridade ${index + 1}</span>
+          </div>
+        </div>
+        <div class="categorization-list-actions">
+          <button type="button" class="btn-inline-secondary" data-rule-action="move-up" data-rule-id="${rule.id ?? ''}" ${index === 0 ? 'disabled' : ''}>↑</button>
+          <button type="button" class="btn-inline-secondary" data-rule-action="move-down" data-rule-id="${rule.id ?? ''}" ${index === orderedRules.length - 1 ? 'disabled' : ''}>↓</button>
+          <button type="button" class="btn-inline-secondary" data-rule-action="edit" data-rule-id="${rule.id ?? ''}">Editar</button>
+          <button type="button" class="btn-inline-secondary" data-rule-action="toggle" data-rule-id="${rule.id ?? ''}">${rule.enabled === false ? 'Ativar' : 'Pausar'}</button>
+          <button type="button" class="btn-inline-secondary btn-danger" data-rule-action="delete" data-rule-id="${rule.id ?? ''}">Excluir</button>
+        </div>
+      </div>
+    `).join('')
+    : '<div class="empty-state"><strong>Nenhuma regra explícita ainda.</strong> Crie uma regra para sobrescrever a categorização padrão nas próximas importações.</div>';
+
+  memoryList.innerHTML = _categorizationMemories.length
+    ? _categorizationMemories.map(memory => `
+      <div class="categorization-list-item">
+        <div>
+          <div class="categorization-list-title">${escapeHtml(memory.descriptionNorm || memory.key)}</div>
+          <div class="categorization-list-meta">
+            <span class="badge ${memory.enabled === false ? 'badge-gray' : 'badge-purple'}">${memory.enabled === false ? 'Pausada' : 'Ativa'}</span>
+            <span class="badge badge-blue">${escapeHtml(memory.category || 'Outros')}</span>
+            <span class="badge badge-gray">${escapeHtml(describeMemoryScope(memory))}</span>
+          </div>
+        </div>
+        <div class="categorization-list-actions">
+          <button type="button" class="btn-inline-secondary" data-memory-action="edit" data-memory-key="${escapeHtml(memory.key || '')}">Editar categoria</button>
+          <button type="button" class="btn-inline-secondary" data-memory-action="toggle" data-memory-key="${escapeHtml(memory.key || '')}">${memory.enabled === false ? 'Ativar' : 'Pausar'}</button>
+          <button type="button" class="btn-inline-secondary btn-danger" data-memory-action="delete" data-memory-key="${escapeHtml(memory.key || '')}">Excluir</button>
+        </div>
+      </div>
+    `).join('')
+    : '<div class="empty-state"><strong>Nenhuma correção lembrada ainda.</strong> Quando você corrigir uma categoria manualmente, ela aparecerá aqui para futuras importações.</div>';
+}
+
+function resetCategorizationRuleForm(rule = null) {
+  const idEl = document.getElementById('categorizationRuleId');
+  const patternEl = document.getElementById('categorizationRulePattern');
+  const sourceEl = document.getElementById('categorizationRuleSource');
+  const directionEl = document.getElementById('categorizationRuleDirection');
+  const enabledEl = document.getElementById('categorizationRuleEnabled');
+  const submitEl = document.getElementById('categorizationRuleSubmit');
+  if (!idEl || !patternEl || !sourceEl || !directionEl || !enabledEl || !submitEl) return;
+
+  idEl.value = rule?.id ?? '';
+  patternEl.value = rule?.pattern ?? '';
+  sourceEl.value = rule?.sourceScope ?? 'all';
+  directionEl.value = rule?.directionScope ?? 'all';
+  enabledEl.checked = rule?.enabled !== false;
+  submitEl.textContent = rule ? 'Salvar regra' : 'Criar regra';
+  populateCategorizationCategorySelect(rule?.category ?? '');
+  setFeedback('', '', 'categorizationRuleFormFeedback');
+}
+
+function describeRuleScope(rule) {
+  const source = rule?.sourceScope && rule.sourceScope !== 'all' ? rule.sourceScope : 'qualquer origem';
+  const direction = rule?.directionScope && rule.directionScope !== 'all' ? rule.directionScope : 'qualquer direção';
+  return `${source} · ${direction}`;
+}
+
+function describeMemoryScope(memory) {
+  const source = memory?.sourceScope && memory.sourceScope !== 'all' ? memory.sourceScope : 'qualquer origem';
+  const direction = memory?.directionScope && memory.directionScope !== 'all' ? memory.directionScope : 'qualquer direção';
+  return `${source} · ${direction}`;
+}
+
 function renderLancamentosAnalytics(analytics) {
   const panel = document.getElementById('lancamentosAnalyticsPanel');
   const summary = document.getElementById('lancamentosAnalyticsSummary');
@@ -625,6 +971,7 @@ function bindConvertDialog() {
         classificado_nome: nome,
       });
       await putItem(store, updated);
+      await rememberLancamentoCategory(lancamento, cat, 'convert-dialog');
 
       const idx = _lancamentos.findIndex(l => String(l.id) === String(lancamentoId));
       if (idx !== -1) {
@@ -770,11 +1117,18 @@ function bindEditDialog() {
     const canal = inferirCanal({ ...lancamento, data, fatura, desc, cat, valor, parcela });
     const updated = prepareForDb({ ...lancamento, data, fatura, desc, cat, canal, valor, parcela });
     await putItem(getStore(lancamento), updated);
+    if (normalizeCategoryText(cat) !== normalizeCategoryText(lancamento.cat)) {
+      await rememberLancamentoCategory(lancamento, cat, 'manual-edit');
+    }
     const idx = _lancamentos.findIndex(l => String(l.id) === String(rawId));
     if (idx !== -1) { _lancamentos[idx] = { ..._lancamentos[idx], data, fatura, desc, cat, canal, valor, parcela }; }
 
     setFeedback('Salvo!', 'success', 'lancamentoEditFeedback');
-    setTimeout(() => { close(); renderLancamentos(getSortedLancamentos(_lancamentos)); }, 700);
+    setTimeout(() => {
+      close();
+      renderLancamentos(getSortedLancamentos(_lancamentos));
+      window.refreshDashboard?.();
+    }, 700);
   });
 }
 
@@ -837,6 +1191,31 @@ function getDialogSubmitLabel(action) {
 
 function buildObsBase(lancamento) {
   return `Criado a partir do lançamento ${lancamento.data} (${lancamento.fatura})`;
+}
+
+function getLancamentoDirection(lancamento) {
+  if (lancamento?.source === 'conta') {
+    return lancamento?.tipo === 'entrada' ? 'entrada' : 'saida';
+  }
+  return 'saida';
+}
+
+async function rememberLancamentoCategory(lancamento, category, learnedFrom) {
+  if (!lancamento || lancamento?.contextoDerivado) return;
+
+  const normalizedCategory = normalizeCategoryText(category);
+  if (!normalizedCategory) return;
+
+  const source = lancamento?.source === 'conta' ? 'conta' : 'cartao';
+  const memoryRecord = buildCategoryMemoryRecord({
+    desc: lancamento.desc,
+    source,
+    direction: getLancamentoDirection(lancamento),
+    category: normalizedCategory,
+    learnedFrom,
+  });
+
+  await putItem('categorizacao_memoria', memoryRecord);
 }
 
 function setFeedback(message, type, elementId = 'lancamentosActionFeedback') {

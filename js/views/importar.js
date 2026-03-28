@@ -461,7 +461,9 @@ export async function clearBase() {
     '  • Registro de PDFs importados\n\n' +
     'Serao MANTIDOS:\n' +
     '  • Assinaturas\n' +
-    '  • Despesas fixas',
+    '  • Despesas fixas\n' +
+    '  • Regras de categorizacao\n' +
+    '  • Correcoes lembradas de categoria',
   );
   if (!ok) return;
 
@@ -479,7 +481,9 @@ export async function clearAllDashboardData() {
     '  • Assinaturas\n' +
     '  • Despesas fixas\n' +
     '  • Observacoes\n' +
-    '  • Orcamentos\n\n' +
+    '  • Orcamentos\n' +
+    '  • Regras de categorizacao\n' +
+    '  • Correcoes lembradas de categoria\n\n' +
     'Essa acao nao pode ser desfeita.',
   );
   if (!ok) return;

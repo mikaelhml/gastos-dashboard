@@ -1,5 +1,6 @@
 import {
   DB_NAME,
+  FULL_BACKUP_OPTIONAL_EMPTY_STORE_NAMES,
   FULL_BACKUP_STORE_NAMES,
   getAllStoresSnapshot,
   openDB,
@@ -17,6 +18,36 @@ function ensureObject(value, message) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(message);
   }
+}
+
+export function normalizeFullBackupStoresForRestore(
+  payloadStores,
+  {
+    requiredStoreNames = FULL_BACKUP_STORE_NAMES,
+    optionalEmptyStoreNames = [],
+  } = {},
+) {
+  ensureObject(payloadStores, 'Backup invalido: stores ausentes.');
+
+  const optionalNames = new Set(optionalEmptyStoreNames);
+  const normalizedStores = {};
+
+  for (const storeName of requiredStoreNames) {
+    const value = payloadStores[storeName];
+
+    if (value === undefined && optionalNames.has(storeName)) {
+      normalizedStores[storeName] = [];
+      continue;
+    }
+
+    if (!Array.isArray(value)) {
+      throw new Error(`Backup invalido: store "${storeName}" ausente ou malformada.`);
+    }
+
+    normalizedStores[storeName] = cloneValue(value);
+  }
+
+  return normalizedStores;
 }
 
 function getStoreRecordCount(stores = {}) {
@@ -68,13 +99,10 @@ export function validateFullBackupPayload(payload) {
 
   ensureObject(payload.stores, 'Backup invalido: stores ausentes.');
 
-  const stores = {};
-  for (const storeName of FULL_BACKUP_STORE_NAMES) {
-    if (!Array.isArray(payload.stores[storeName])) {
-      throw new Error(`Backup invalido: store "${storeName}" ausente ou malformada.`);
-    }
-    stores[storeName] = cloneValue(payload.stores[storeName]);
-  }
+  const stores = normalizeFullBackupStoresForRestore(payload.stores, {
+    requiredStoreNames: FULL_BACKUP_STORE_NAMES,
+    optionalEmptyStoreNames: FULL_BACKUP_OPTIONAL_EMPTY_STORE_NAMES,
+  });
 
   return {
     versao: FULL_BACKUP_VERSION,

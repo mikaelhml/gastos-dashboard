@@ -336,6 +336,19 @@
     </div>
   </div>
   <div id="lancamentosContextPanel" class="helper-panel" style="display:none"></div>
+  <div id="lancamentosCategorizationPanel" class="helper-panel" style="display:none">
+    <div class="helper-panel-header">
+      <div>
+        <h3>🧠 Categorização inteligente</h3>
+        <p>Novas importações seguem esta ordem: correção lembrada → regra explícita → categorizador padrão → Outros.</p>
+      </div>
+      <div class="categorization-panel-actions">
+        <button type="button" class="btn-inline-secondary" id="openLancamentosCategorizationDialog">Gerenciar regras</button>
+      </div>
+    </div>
+    <div id="categorizationRulesSummary" class="helper-badges"></div>
+    <div id="categorizationRulesFeedback" class="inline-form-feedback" style="margin-top:12px" aria-live="polite"></div>
+  </div>
   <div class="filters">
     <input type="text" id="searchInput" placeholder="🔍 Buscar por descrição..." aria-label="Buscar lançamentos por descrição" oninput="filterLancamentos()">
     <select id="filterFatura" aria-label="Filtrar lançamentos por fatura" onchange="filterLancamentos()"></select>
@@ -511,6 +524,81 @@
       </div>
     </form>
   </dialog>
+
+  <dialog id="lancamentosCategorizationDialog" class="app-modal">
+    <form id="categorizationRuleForm" class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">Gerenciar categorização</div>
+          <div class="modal-subtitle">Regras e correções lembradas só valem para novas importações.</div>
+        </div>
+        <button type="button" class="modal-close-btn" id="lancamentosCategorizationCloseTop" aria-label="Fechar">✕</button>
+      </div>
+
+      <input type="hidden" id="categorizationRuleId">
+
+      <div class="categorization-dialog-grid">
+        <div class="surface-panel">
+          <div class="section-eyebrow">Nova regra explícita</div>
+          <div class="modal-grid">
+            <label class="form-field" style="grid-column:1/-1">
+              <span>Padrão da descrição</span>
+              <input id="categorizationRulePattern" type="text" required placeholder="Ex.: MERCADO CENTRAL">
+            </label>
+            <label class="form-field">
+              <span>Categoria existente</span>
+              <select id="categorizationRuleCategorySelect">
+                <option value="">Selecione uma categoria</option>
+              </select>
+            </label>
+            <label class="form-field" id="categorizationRuleCustomCategoryField" style="display:none">
+              <span>Nova categoria</span>
+              <input id="categorizationRuleCustomCategory" type="text" placeholder="Ex.: Alimentação">
+            </label>
+            <label class="form-field">
+              <span>Origem</span>
+              <select id="categorizationRuleSource">
+                <option value="all">Qualquer origem</option>
+                <option value="cartao">Cartão</option>
+                <option value="conta">Conta</option>
+              </select>
+            </label>
+            <label class="form-field">
+              <span>Direção</span>
+              <select id="categorizationRuleDirection">
+                <option value="all">Qualquer direção</option>
+                <option value="saida">Saída</option>
+                <option value="entrada">Entrada</option>
+              </select>
+            </label>
+            <label class="checkbox-field">
+              <input id="categorizationRuleEnabled" type="checkbox" checked>
+              <span>Regra ativa</span>
+            </label>
+          </div>
+          <div id="categorizationRuleFormFeedback" class="inline-form-feedback" aria-live="polite"></div>
+          <div class="modal-actions">
+            <button type="button" class="btn-inline-secondary" id="categorizationRuleReset">Limpar</button>
+            <button type="submit" class="btn-primary" id="categorizationRuleSubmit">Criar regra</button>
+          </div>
+        </div>
+
+        <div class="surface-panel">
+          <div class="section-eyebrow">Regras explícitas</div>
+          <div id="categorizationRulesList" class="categorization-list"></div>
+        </div>
+      </div>
+
+      <div class="surface-panel" style="margin-top:18px">
+        <div class="section-eyebrow">Correções lembradas</div>
+        <div id="categorizationMemoryList" class="categorization-list"></div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-inline-secondary" id="lancamentosCategorizationClose">Fechar</button>
+      </div>
+    </form>
+  </dialog>
 </div>
 
 <!-- ── EXTRATO CONTA───────────────────────────────────────────────────────── -->
@@ -613,12 +701,25 @@
         </select>
       </div>
     </div>
-    <div class="hero-actions">
+  <div class="hero-actions">
       <button type="button" class="btn-primary" onclick="recalcularProjecao()">
         🔄 Recalcular Projeção
       </button>
       <div id="pResultadoMensal" class="hero-result"></div>
     </div>
+  </div>
+
+  <div id="projecaoScrPanel" class="helper-panel">
+    <div class="helper-panel-header">
+      <div>
+        <h3>🏛️ Compromissos derivados do SCR</h3>
+        <p>Mostra o que entra automaticamente na projeção, o que está em conflito com o manual e o que fica só como contexto. O bucket <strong>SCR incluído</strong> aparece separado no cálculo.</p>
+      </div>
+      <button type="button" class="btn-inline-secondary" onclick="switchTab(null, 'registrato')">Abrir Registrato</button>
+    </div>
+    <div id="projecaoScrSummary"></div>
+    <div id="projecaoScrCommitments" class="sub-grid" style="margin-top:16px"></div>
+    <div id="projecaoTrackerImpact" class="helper-panel" style="margin-top:16px"></div>
   </div>
 
   <div class="section-title">📊 Cenários Comparativos</div>
@@ -675,6 +776,7 @@
           <th style="text-align:right">Salário</th>
           <th style="text-align:right">+ Renda Extra</th>
           <th style="text-align:right">Fixos (conta)</th>
+          <th style="text-align:right">SCR incluído</th>
           <th style="text-align:right">Fatura Itaú</th>
           <th style="text-align:right">Outros</th>
           <th style="text-align:right">Total Saídas</th>
@@ -781,7 +883,7 @@
     <div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;margin-bottom:8px">🗑️ Limpar Base Importada</div>
     <p style="font-size:0.85rem;color:#718096;margin-bottom:16px">
       Remove todas as transações do extrato, lançamentos de fatura e registro de PDFs importados.<br>
-      <strong style="color:#a0aec0">Assinaturas e despesas fixas são mantidas.</strong>
+      <strong style="color:#a0aec0">Assinaturas, despesas fixas e regras/correções de categorização são mantidas.</strong>
     </p>
     <div style="display:flex;gap:12px;flex-wrap:wrap">
       <button class="btn-danger" onclick="clearBase()">
@@ -801,8 +903,37 @@
   <div class="changelog-list">
     <div class="surface-panel changelog-card">
       <div class="changelog-card-header">
-        <span class="changelog-card-title">Fase 2 — Analytics Foundation</span>
+        <span class="changelog-card-title">Fase 4 — Smart Categorization</span>
         <span style="font-size:0.75rem;background:#276749;color:#68d391;padding:2px 10px;border-radius:20px">Mar/2026 · atual</span>
+      </div>
+      <ul class="changelog-card-list">
+        <li>🧠 A aba <code>Lançamentos</code> agora ganhou um painel de categorização inteligente com diálogo interno para criar, editar, reordenar, pausar e excluir regras</li>
+        <li>🏷️ Novas importações seguem a ordem <code>correção lembrada → regra explícita → categorizador padrão → Outros</code>, sem recategorizar o histórico já importado a cada refresh</li>
+        <li>✍️ Ao corrigir manualmente uma categoria, o app passa a lembrar essa decisão para futuras importações compatíveis, sem aprender <code>tipo_classificado</code> ou <code>classificado_nome</code></li>
+        <li>📚 A categoria da regra agora oferece um <code>select</code> com categorias já conhecidas e também permite criar uma categoria nova quando necessário</li>
+        <li>🧯 <code>Limpar dados importados</code> preserva regras e memórias de categorização; <code>Limpar base completa</code> continua apagando esse conhecimento junto com o restante da base</li>
+        <li>🧪 A fase adicionou cobertura automatizada para precedência, ordenação de regras, compatibilidade de backup antigo e preservação do conhecimento de categorização</li>
+      </ul>
+    </div>
+
+    <div class="surface-panel changelog-card">
+      <div class="changelog-card-header">
+        <span class="changelog-card-title">Fase 3 — Projection & Financing Tracking</span>
+        <span style="font-size:0.75rem;background:#2d3748;color:#a0aec0;padding:2px 10px;border-radius:20px">Mar/2026</span>
+      </div>
+      <ul class="changelog-card-list">
+        <li>🏛️ A aba <code>Projeção</code> passou a exibir compromissos derivados do SCR com separação entre itens incluídos, conflitos e contexto</li>
+        <li>📦 Parcelamentos e financiamentos agora respeitam encerramento real no cronograma, em vez de ficarem infinitamente pressionando a projeção</li>
+        <li>📊 O cálculo mês a mês ganhou bucket separado para <code>SCR incluído</code>, deixando mais claro o impacto de compromissos derivados</li>
+        <li>🎯 Cenários otimista, realista, pessimista e ponto de equilíbrio foram alinhados ao novo modelo de projeção</li>
+        <li>🧪 A base ganhou testes para conflitos de sobreposição, compromisso SCR contextual-only e resumo compacto de parcelamentos/financiamentos</li>
+      </ul>
+    </div>
+
+    <div class="surface-panel changelog-card">
+      <div class="changelog-card-header">
+        <span class="changelog-card-title">Fase 2 — Analytics Foundation</span>
+        <span style="font-size:0.75rem;background:#2d3748;color:#a0aec0;padding:2px 10px;border-radius:20px">Mar/2026</span>
       </div>
       <ul class="changelog-card-list">
         <li>📈 A aba <code>Lançamentos</code> agora mostra um painel analítico com tendência multi-mês por categoria usando gastos importados de cartão + conta</li>

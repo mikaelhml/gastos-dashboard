@@ -25,6 +25,8 @@ import { buildRegistratoSuggestions, computeRegistratoInsights }   from './utils
 import { extrairParcelaFinal } from './parsers/pdf-utils.js';
 import { buildCardBillSummaries, buildRegistratoContextRows } from './utils/dashboard-context.js';
 import { buildSpendAnalytics } from './utils/analytics.js';
+import { buildScrProjectionModel } from './utils/projection-model.js';
+import { buildParcelamentoSummary } from './utils/parcelamento-summary.js';
 
 let _refreshChain = Promise.resolve();
 const REGISTRATO_VALUE_FIELDS = ['emDia', 'vencida', 'outrosCompromissos', 'creditoALiberar', 'coobrigacoes', 'limite'];
@@ -66,6 +68,8 @@ async function loadDashboardData() {
     extratoSummary,
     orcamentos,
     assinaturaSugestoesDispensa,
+    categorizacaoRegras,
+    categorizacaoMemoria,
     registratoSnapshots,
     registratoResumos,
     registratoSugestoesDispensa,
@@ -78,6 +82,8 @@ async function loadDashboardData() {
     getAll('extrato_summary'),
     getAll('orcamentos'),
     getAll('assinatura_sugestoes_dispensa'),
+    getAll('categorizacao_regras'),
+    getAll('categorizacao_memoria'),
     getAll('registrato_scr_snapshot'),
     getAll('registrato_scr_resumo_mensal'),
     getAll('registrato_sugestoes_dispensa'),
@@ -107,6 +113,8 @@ async function loadDashboardData() {
     extratoSummary,
     orcamentos,
     assinaturaSugestoesDispensa,
+    categorizacaoRegras,
+    categorizacaoMemoria,
     registratoSnapshots: registratoSnapshotsNormalizados,
     registratoResumos: registratoResumosNormalizados,
     registratoSugestoesDispensa,
@@ -191,6 +199,8 @@ async function renderDashboard() {
     extratoSummary,
     orcamentos,
     assinaturaSugestoesDispensa,
+    categorizacaoRegras,
+    categorizacaoMemoria,
     registratoSnapshots,
     registratoResumos,
     registratoSugestoesDispensa,
@@ -211,6 +221,18 @@ async function renderDashboard() {
     lancamentos,
     extratoTransacoes,
   });
+  const scrProjectionModel = buildScrProjectionModel({
+    despesasFixas,
+    lancamentos,
+    extratoTransacoes,
+    registratoSnapshots,
+    registratoResumos,
+    dismissals: registratoSugestoesDispensa,
+  });
+  const parcelamentoSummary = buildParcelamentoSummary({
+    despesasFixas,
+    lancamentos,
+  });
   const extratoContextRows = buildRegistratoContextRows(
     registratoResumos,
     [...new Set(extratoTransacoes.map(item => item?.mes).filter(Boolean))],
@@ -229,6 +251,8 @@ async function renderDashboard() {
   initLancamentos(lancamentos, extratoTransacoes, assinaturas, despesasFixas, {
     analytics: spendAnalytics,
     cardBillSummaries,
+    categorizationRules: categorizacaoRegras,
+    categorizationMemories: categorizacaoMemoria,
     registratoContextRows: lancamentosContextRows,
   });
   initExtrato(extratoTransacoes, extratoSummary, {
@@ -236,7 +260,10 @@ async function renderDashboard() {
     registratoContextRows: extratoContextRows,
     registratoInsights,
   });
-  initProjecao(despesasFixas, extratoSummary, registratoInsights);
+  initProjecao(despesasFixas, extratoSummary, registratoInsights, {
+    scrProjectionModel,
+    parcelamentoSummary,
+  });
   buildRegistrato(registratoResumos, registratoSnapshots, registratoSuggestions, registratoInsights);
   await buildImportar();
 }
@@ -288,44 +315,48 @@ function bindTabKeyboardNavigation() {
 
 // ── Exposição ao window (chamadas vindas dos atributos onclick/oninput no HTML) ─
 
-window.switchTab          = switchTab;
-window.filterLancamentos  = filterLancamentos;
-window.sortLancamentosBy  = sortLancamentosBy;
-window.clearLancamentosFilters = clearLancamentosFilters;
-window.filterExtrato      = filterExtrato;
-window.clearExtratoFilters = clearExtratoFilters;
-window.recalcularProjecao = recalcularProjecao;
-window.clearBase          = clearBase;
-window.clearAllDashboardData = clearAllDashboardData;
-window.refreshDashboard   = refreshDashboard;
+if (typeof window !== 'undefined') {
+  window.switchTab          = switchTab;
+  window.filterLancamentos  = filterLancamentos;
+  window.sortLancamentosBy  = sortLancamentosBy;
+  window.clearLancamentosFilters = clearLancamentosFilters;
+  window.filterExtrato      = filterExtrato;
+  window.clearExtratoFilters = clearExtratoFilters;
+  window.recalcularProjecao = recalcularProjecao;
+  window.clearBase          = clearBase;
+  window.clearAllDashboardData = clearAllDashboardData;
+  window.refreshDashboard   = refreshDashboard;
 
-// Emoji picker helpers — usados pelos onclick inline no HTML
-window.selectEmoji = function selectEmoji(inputId, previewId, pickerId, btn, emoji) {
-  const input = document.getElementById(inputId);
-  const preview = document.getElementById(previewId);
-  const picker = document.getElementById(pickerId);
-  if (input)   input.value = emoji;
-  if (preview) preview.textContent = emoji;
-  if (picker)  picker.style.display = 'none';
-  picker?.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('selected'));
-  btn?.classList.add('selected');
-};
+  // Emoji picker helpers — usados pelos onclick inline no HTML
+  window.selectEmoji = function selectEmoji(inputId, previewId, pickerId, btn, emoji) {
+    const input = document.getElementById(inputId);
+    const preview = document.getElementById(previewId);
+    const picker = document.getElementById(pickerId);
+    if (input)   input.value = emoji;
+    if (preview) preview.textContent = emoji;
+    if (picker)  picker.style.display = 'none';
+    picker?.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('selected'));
+    btn?.classList.add('selected');
+  };
 
-window.syncEmojiPicker = function syncEmojiPicker(pickerId, previewId, emoji) {
-  const picker  = document.getElementById(pickerId);
-  const preview = document.getElementById(previewId);
-  if (preview) preview.textContent = emoji || '✨';
-  picker?.querySelectorAll('.emoji-btn').forEach(b => {
-    b.classList.toggle('selected', b.dataset.emoji === emoji);
-  });
-};
+  window.syncEmojiPicker = function syncEmojiPicker(pickerId, previewId, emoji) {
+    const picker  = document.getElementById(pickerId);
+    const preview = document.getElementById(previewId);
+    if (preview) preview.textContent = emoji || '✨';
+    picker?.querySelectorAll('.emoji-btn').forEach(b => {
+      b.classList.toggle('selected', b.dataset.emoji === emoji);
+    });
+  };
 
-window.toggleEmojiPicker = function toggleEmojiPicker(pickerId) {
-  const picker = document.getElementById(pickerId);
-  if (!picker) return;
-  picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
-};
+  window.toggleEmojiPicker = function toggleEmojiPicker(pickerId) {
+    const picker = document.getElementById(pickerId);
+    if (!picker) return;
+    picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+  };
+}
 
 // ── Executa ───────────────────────────────────────────────────────────────────
 
-init();
+if (typeof window !== 'undefined' && typeof document !== 'undefined' && typeof indexedDB !== 'undefined') {
+  init();
+}

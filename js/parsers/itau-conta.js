@@ -14,9 +14,9 @@
  */
 
 import { addItem, putItem, getAll, bulkAdd, deleteItem } from '../db.js';
-import { categorizar } from '../utils/categorizer.js';
 import { inferirCanal } from '../utils/transaction-tags.js';
 import { buildImportQuality } from '../utils/import-integrity.js';
+import { applyCategorizationToImportedRows, buildCategorizationRuntime } from '../utils/categorization-engine.js';
 import {
   computeHash,
   extrairLinhasPDF,
@@ -233,15 +233,26 @@ export async function importarItauConta(file, onProgress = () => {}) {
     };
   }
 
-  // 6. Categorizar
-  for (const tx of transacoes) {
-    tx.cat = categorizar(tx.desc);
-    tx.canal = inferirCanal({ ...tx, source: 'conta' });
-  }
+  const [rules, memories] = await Promise.all([
+    getAll('categorizacao_regras'),
+    getAll('categorizacao_memoria'),
+  ]);
+  const categorizationRuntime = buildCategorizationRuntime({ rules, memories });
+  const categorizedTransacoes = applyCategorizationToImportedRows(
+    transacoes,
+    categorizationRuntime,
+    {
+      source: 'conta',
+      direction: tx => tx.tipo,
+    },
+  ).map(tx => ({
+    ...tx,
+    canal: inferirCanal({ ...tx, source: 'conta' }),
+  }));
   onProgress(70);
 
   // 7. Determinar meses cobertos
-  const mesesNoPDF = [...new Set(transacoes.map(t => t.mes))];
+  const mesesNoPDF = [...new Set(categorizedTransacoes.map(t => t.mes))];
 
   // 8. Remover transações existentes dos mesmos meses e da mesma conta (não apagar outras contas)
   const todas = await getAll('extrato_transacoes');
@@ -250,7 +261,7 @@ export async function importarItauConta(file, onProgress = () => {}) {
   }
 
   // 9. Inserir novas transações
-  await bulkAdd('extrato_transacoes', transacoes);
+  await bulkAdd('extrato_transacoes', categorizedTransacoes);
   onProgress(80);
 
   // 10. Definir âncora de saldo no summary (mês mais antigo do PDF)
@@ -278,7 +289,7 @@ export async function importarItauConta(file, onProgress = () => {}) {
   await addItem('pdfs_importados', {
     hash, nome: file.name, tamanho: file.size,
     importadoEm: new Date().toISOString(),
-    transacoes:  transacoes.length,
+    transacoes:  categorizedTransacoes.length,
     mes:         mesLabel,
     saldoAnchor: anchor?.saldo ?? null,
   });
@@ -288,11 +299,11 @@ export async function importarItauConta(file, onProgress = () => {}) {
   onProgress(100);
 
   return {
-    importado: transacoes.length,
+    importado: categorizedTransacoes.length,
     duplicata: false,
     mes: mesLabel,
     quality: buildImportQuality({
-      importedCount: transacoes.length,
+      importedCount: categorizedTransacoes.length,
       warningCount: 0,
       unitLabel: 'transação',
     }),

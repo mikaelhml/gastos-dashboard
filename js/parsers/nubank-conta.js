@@ -15,9 +15,9 @@
  */
 
 import { addItem, putItem, getAll, bulkAdd, deleteItem } from '../db.js';
-import { categorizar } from '../utils/categorizer.js';
 import { inferirCanal } from '../utils/transaction-tags.js';
 import { buildImportQuality } from '../utils/import-integrity.js';
+import { applyCategorizationToImportedRows, buildCategorizationRuntime } from '../utils/categorization-engine.js';
 import {
   computeHash,
   extrairLinhasPDF,
@@ -292,18 +292,29 @@ export async function importarNubankConta(file, onProgress = () => {}) {
     };
   }
 
-  // 7. Categorizar
-  for (const tx of transacoes) {
-    tx.cat = categorizar(tx.desc);
-    tx.canal = inferirCanal({ ...tx, source: 'conta' });
-  }
+  const [rules, memories] = await Promise.all([
+    getAll('categorizacao_regras'),
+    getAll('categorizacao_memoria'),
+  ]);
+  const categorizationRuntime = buildCategorizationRuntime({ rules, memories });
+  const categorizedTransacoes = applyCategorizationToImportedRows(
+    transacoes,
+    categorizationRuntime,
+    {
+      source: 'conta',
+      direction: tx => tx.tipo,
+    },
+  ).map(tx => ({
+    ...tx,
+    canal: inferirCanal({ ...tx, source: 'conta' }),
+  }));
 
   onProgress(75);
 
   // 8. Determinar meses cobertos
   const mesesNoPDF = periodo
     ? [periodo.mesPrincipal]
-    : [...new Set(transacoes.map(t => t.mes))];
+    : [...new Set(categorizedTransacoes.map(t => t.mes))];
 
   // 9. Remover transações existentes do mesmo período e da mesma conta (não apagar outras contas)
   const todas = await getAll('extrato_transacoes');
@@ -312,7 +323,7 @@ export async function importarNubankConta(file, onProgress = () => {}) {
   }
 
   // 10. Inserir novas transações
-  await bulkAdd('extrato_transacoes', transacoes);
+  await bulkAdd('extrato_transacoes', categorizedTransacoes);
   onProgress(85);
 
   // 11. Atualizar âncora de saldo no summary se extraímos saldoInicial do PDF
@@ -338,7 +349,7 @@ export async function importarNubankConta(file, onProgress = () => {}) {
   await addItem('pdfs_importados', {
     hash, nome: file.name, tamanho: file.size,
     importadoEm:  new Date().toISOString(),
-    transacoes:   transacoes.length,
+    transacoes:   categorizedTransacoes.length,
     mes:          mesesNoPDF.join(', '),
     saldoInicial: saldoInicial ?? null,
     saldoFinal:   saldoFinal   ?? null,
@@ -349,11 +360,11 @@ export async function importarNubankConta(file, onProgress = () => {}) {
   onProgress(100);
 
   return {
-    importado: transacoes.length,
+    importado: categorizedTransacoes.length,
     duplicata: false,
     mes: mesesNoPDF.join(', '),
     quality: buildImportQuality({
-      importedCount: transacoes.length,
+      importedCount: categorizedTransacoes.length,
       warningCount: 0,
       unitLabel: 'transação',
     }),

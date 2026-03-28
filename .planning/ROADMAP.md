@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Data Safety & Import Reliability** - Imported data is trustworthy, re-imports never corrupt, and a full backup exists before analytics stores are added
 - [x] **Phase 2: Analytics Foundation** - Spending by category across months is visible with clear month-over-month movement
-- [ ] **Phase 3: Projection & Financing Tracking** - The projection tab reflects real Registrato/SCR commitments and installment payoff timelines
+- [x] **Phase 3: Projection & Financing Tracking** - The projection tab reflects real Registrato/SCR commitments and installment payoff timelines
 - [ ] **Phase 4: Smart Categorization** - The dashboard learns categorization preferences from user corrections and rule definitions
 - [ ] **Phase 5: UX Polish & Privacy Transparency** - The import → understand → track flow is clear and the local-only privacy promise is made explicit
 
@@ -51,7 +51,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. User can see Registrato/SCR financing commitments automatically appear as monthly outflows in the projection tab without any manual entry
   2. User can distinguish which projected values are sourced from Registrato/SCR versus manually entered commitments (clearly labeled or visually differentiated)
   3. User can view an installment tracker showing remaining payments, expected payoff date, and a progress bar for each tracked installment
-**Plans**: TBD
+**Plans**: 03-01, 03-02, 03-03
 **UI hint**: yes
 
 ### Phase 4: Smart Categorization
@@ -62,7 +62,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. User can create a categorization rule (keyword → category), edit it, and delete it from a dedicated rules management UI
   2. User can confirm that their custom rules are applied before the app's default categorizer — a transaction matching a user rule is never overridden by the default
   3. User can manually change a transaction's category and see that correction automatically remembered and applied the next time a matching transaction is imported
-**Plans**: TBD
+**Plans**: 04-01, 04-02, 04-03
 **UI hint**: yes
 
 ### Phase 5: UX Polish & Privacy Transparency
@@ -74,7 +74,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. A first-time user with no imported data sees helpful empty states with clear next-step instructions rather than empty charts
   3. User can export the transaction list to Excel/CSV from the transactions tab
   4. The dashboard is fully usable on a mobile-width screen without horizontal scrolling or overlapping elements
-**Plans**: TBD
+**Plans**: 04-01, 04-02, 04-03
 **UI hint**: yes
 
 ## Progress
@@ -86,6 +86,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Data Safety & Import Reliability | 3/3 | Completed | 2026-03-28 |
 | 2. Analytics Foundation | 3/3 | Completed | 2026-03-28 |
-| 3. Projection & Financing Tracking | 0/? | Next up | - |
-| 4. Smart Categorization | 0/? | Not started | - |
+| 3. Projection & Financing Tracking | 3/3 | Completed | 2026-03-28 |
+| 4. Smart Categorization | 2/3 + approval pending | Awaiting verification | - |
 | 5. UX Polish & Privacy Transparency | 0/? | Not started | - |

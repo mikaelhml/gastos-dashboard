@@ -2,6 +2,8 @@
 
 Dashboard web offline-first para controle financeiro pessoal, com persistencia local em `IndexedDB`, importacao de PDFs bancarios e organizacao manual de assinaturas, despesas fixas, parcelamentos e financiamentos.
 
+As bibliotecas de graficos e parsing de PDF agora ficam versionadas em `vendor/`, entao o carregamento inicial do app nao depende de CDN externa.
+
 ## Status atual do projeto
 
 - **Fase 9:** refinamento visual do dashboard + correcao de migracao IndexedDB
@@ -171,7 +173,7 @@ gastos-dashboard/
 
 ## Privacidade
 
-Nenhum dado e enviado para servidor. Tudo fica no navegador do usuario via `IndexedDB`.
+Nenhum dado financeiro e enviado para servidor do app. Tudo fica no navegador do usuario via `IndexedDB`.
 
 ## Troubleshooting rapido
 

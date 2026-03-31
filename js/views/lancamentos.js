@@ -4,6 +4,7 @@ import { addItem, putItem, deleteItem, getAll } from '../db.js';
 import { escapeHtml } from '../utils/dom.js';
 import { enriquecerCanal, getCanalMeta, inferirCanal, listarCanais } from '../utils/transaction-tags.js';
 import { buildEmptyStateViewModels } from '../utils/empty-states.js';
+import { buildAliasLookup, buildDisplayNameMeta, buildTransactionAliasKey } from '../utils/display-names.js';
 import {
   applyCategorizationToImportedRows,
   buildCategoryMemoryRecord,
@@ -23,6 +24,7 @@ let _sortState = { key: 'data', direction: 'desc' };
 let _categorizationRules = [];
 let _categorizationMemories = [];
 let _firstRunLancamentosModel = null;
+let _transactionAliasLookup = new Map();
 const ANALYTICS_COLORS = ['#fc8181', '#63b3ed', '#68d391', '#f6e05e', '#b794f4', '#f6ad55', '#76e4f7', '#fbb6ce', '#90cdf4', '#a0aec0'];
 
 function parseDataTs(data) {
@@ -63,6 +65,7 @@ export function initLancamentos(lancamentos, extratoTransacoes = [], _assinatura
     ...memory,
     enabled: memory?.enabled !== false,
   }));
+  _transactionAliasLookup = buildAliasLookup(context.transactionAliases || []);
   const emptyStates = buildEmptyStateViewModels({
     importedTransactionCount: cartaoNorm.length + extratoNorm.length,
     manualSubscriptionCount: _assinaturas?.length || 0,
@@ -283,7 +286,14 @@ function renderLancamentos(data) {
         parcelaHtml = `<span class="parcela-badge" style="margin-left:6px">📦 ${escapeHtml(l.parcela)}</span>`;
       }
     }
-    const descHtml = `${escapeHtml(l.desc)}${parcelaHtml}`;
+    const displayName = buildDisplayNameMeta(l.desc, {
+      maxLength: isContexto ? 56 : 44,
+      stripInstallmentSuffix: isParc && !isContexto,
+      aliases: _transactionAliasLookup,
+    });
+    const descHtml = `
+      <span class="display-name display-name--table" title="${escapeHtml(displayName.raw)}">${escapeHtml(displayName.short)}</span>
+      ${parcelaHtml}`;
 
     // Badge de origem
     const origemBadge = isContexto
@@ -1291,6 +1301,7 @@ function bindEditDialog() {
   const cancelTop = document.getElementById('lancamentoEditCancelTop');
   const cancelBtn = document.getElementById('lancamentoEditCancel');
   const removeBtn = document.getElementById('lancamentoEditRemoveClass');
+  const aliasInput = document.getElementById('editAlias');
   if (!dialog || !form) return;
 
   const close = () => { dialog.close(); setFeedback('', '', 'lancamentoEditFeedback'); };
@@ -1320,6 +1331,7 @@ function bindEditDialog() {
     const data    = document.getElementById('editData').value.trim();
     const fatura  = document.getElementById('editFatura').value.trim();
     const desc    = document.getElementById('editDesc').value.trim();
+    const alias   = aliasInput?.value.trim() || '';
     const cat     = document.getElementById('editCat').value.trim();
     const valor   = parseFloat(document.getElementById('editValor').value);
     const parcela = document.getElementById('editParcela').value.trim() || null;
@@ -1332,6 +1344,7 @@ function bindEditDialog() {
     const canal = inferirCanal({ ...lancamento, data, fatura, desc, cat, valor, parcela });
     const updated = prepareForDb({ ...lancamento, data, fatura, desc, cat, canal, valor, parcela });
     await putItem(getStore(lancamento), updated);
+    await persistTransactionAlias(desc, alias, { stripInstallmentSuffix: !!parcela });
     if (normalizeCategoryText(cat) !== normalizeCategoryText(lancamento.cat)) {
       await rememberLancamentoCategory(lancamento, cat, 'manual-edit');
     }
@@ -1354,6 +1367,11 @@ function openEditDialog(lancamento) {
   document.getElementById('editData').value    = lancamento.data    || '';
   document.getElementById('editFatura').value  = lancamento.fatura  || '';
   document.getElementById('editDesc').value    = lancamento.desc    || '';
+  const aliasInput = document.getElementById('editAlias');
+  if (aliasInput) {
+    const aliasKey = buildTransactionAliasKey(lancamento.desc, { stripInstallmentSuffix: !!lancamento.parcela });
+    aliasInput.value = _transactionAliasLookup.get(aliasKey) || '';
+  }
   document.getElementById('editCat').value     = lancamento.cat     || '';
   document.getElementById('editValor').value   = (lancamento.valor ?? '').toString();
   document.getElementById('editParcela').value = lancamento.parcela || '';
@@ -1431,6 +1449,25 @@ async function rememberLancamentoCategory(lancamento, category, learnedFrom) {
   });
 
   await putItem('categorizacao_memoria', memoryRecord);
+}
+
+async function persistTransactionAlias(desc, alias, options = {}) {
+  const key = buildTransactionAliasKey(desc, options);
+  if (!key) return;
+
+  if (!alias) {
+    _transactionAliasLookup.delete(key);
+    await deleteItem('transaction_aliases', key);
+    return;
+  }
+
+  const record = {
+    key,
+    alias,
+    updatedAt: new Date().toISOString(),
+  };
+  _transactionAliasLookup.set(key, alias);
+  await putItem('transaction_aliases', record);
 }
 
 function setFeedback(message, type, elementId = 'lancamentosActionFeedback') {

@@ -99,7 +99,7 @@ function classifySignal({ signal, recurringGroups, despesasFixas, dismissedKeys 
   const commitmentBase = buildCommitmentBase(signal, preferredGroup);
   const dismissalKey = `projection:${signal.key}:${preferredGroup?.key || 'none'}`;
 
-  if (dismissedKeys.has(dismissalKey) || dismissedKeys.has(signal.key)) {
+  if (isSignalDismissed({ signal, preferredGroup, dismissalKey, dismissedKeys })) {
     return {
       ...commitmentBase,
       status: 'contextual-only',
@@ -182,6 +182,18 @@ function classifySignal({ signal, recurringGroups, despesasFixas, dismissedKeys 
     sourceChannel: preferredGroup.source,
     projectionImpactMonthly: preferredGroup.valorMedio,
   };
+}
+
+function isSignalDismissed({ signal, preferredGroup, dismissalKey, dismissedKeys }) {
+  if (!dismissedKeys?.size) return false;
+
+  const candidates = [
+    dismissalKey,
+    signal?.key,
+    preferredGroup?.key ? `registrato:${signal?.key}:${preferredGroup.key}` : '',
+  ].filter(Boolean);
+
+  return candidates.some(key => dismissedKeys.has(key));
 }
 
 function buildCommitmentBase(signal, group) {

@@ -1,4 +1,5 @@
 import { putItem, addItem } from '../db.js';
+import { buildDisplayNameMeta } from './display-names.js';
 
 const INSTITUTION_DEFS = [
   { id: 'caixa', label: 'Caixa', aliases: ['CAIXA ECONOMICA FEDERAL', 'CAIXA'], defaultCat: 'Moradia' },
@@ -246,7 +247,7 @@ function agruparTransacoesRecorrentes(lancamentos, extratoTransacoes, existingNa
       groups.set(key, {
         key,
         merchant,
-        prettyName: toTitleCase(removerSufixoParcela(rawDesc)),
+        prettyName: buildDisplayNameMeta(removerSufixoParcela(rawDesc), { maxLength: 48 }).friendly,
         cat: String(item?.cat ?? '').trim() || inferirCategoriaPorDescricao(rawDesc),
         byMonth: new Map(),
         matchedInstitution: resolveInstitution(rawDesc),
@@ -388,15 +389,6 @@ function normalizeText(value) {
     .replace(/[^\p{L}\p{N} ]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function toTitleCase(value) {
-  return String(value ?? '')
-    .toLocaleLowerCase('pt-BR')
-    .split(' ')
-    .filter(Boolean)
-    .map(part => part.charAt(0).toLocaleUpperCase('pt-BR') + part.slice(1))
-    .join(' ');
 }
 
 function compareMonthLabel(a, b) {

@@ -1,6 +1,7 @@
 import { fmt } from '../utils/formatters.js';
 import { addItem, deleteItem, putItem } from '../db.js';
 import { escapeHtml } from '../utils/dom.js';
+import { buildAliasLookup, buildDisplayNameMeta } from '../utils/display-names.js';
 
 const CAT_ACCENT = {
   Entretenimento: '#b794f4',
@@ -29,7 +30,8 @@ function getRenewalBadge() {
   return '';
 }
 
-export function buildAssinaturas(assinaturas, observacoes, lancamentos = [], extratoTransacoes = [], sugestoesDispensa = []) {
+export function buildAssinaturas(assinaturas, observacoes, lancamentos = [], extratoTransacoes = [], sugestoesDispensa = [], transactionAliases = []) {
+  const aliasLookup = buildAliasLookup(transactionAliases);
   const total = assinaturas.reduce((s, a) => s + toMoney(a.valor), 0);
 
   document.getElementById('subTotalBar').textContent = fmt(total);
@@ -37,7 +39,7 @@ export function buildAssinaturas(assinaturas, observacoes, lancamentos = [], ext
   document.getElementById('subCount').textContent = assinaturas.length;
 
   const renewalBadge = getRenewalBadge();
-  renderSuggestions(assinaturas, lancamentos, extratoTransacoes, sugestoesDispensa);
+  renderSuggestions(assinaturas, lancamentos, extratoTransacoes, sugestoesDispensa, aliasLookup);
 
   const grid = document.getElementById('subGrid');
   grid.innerHTML = '';
@@ -49,13 +51,14 @@ export function buildAssinaturas(assinaturas, observacoes, lancamentos = [], ext
       </div>`;
   } else {
     assinaturas.forEach(a => {
+      const displayName = buildDisplayNameMeta(a.nome, { maxLength: 24, aliases: aliasLookup });
       const accent = CAT_ACCENT[a.cat] || '#63b3ed';
       grid.innerHTML += `
         <div class="sub-card" style="--sub-accent:${accent}">
           <div class="sub-card-top">
             <div class="sub-icon">${escapeHtml(a.icon || '✨')}</div>
             <div class="sub-info">
-              <div class="sub-name">${escapeHtml(a.nome)}</div>
+              <div class="sub-name display-name display-name--card" title="${escapeHtml(displayName.raw)}">${escapeHtml(displayName.short)}</div>
               <div class="sub-cat"><span class="badge badge-blue" style="font-size:0.7rem">${escapeHtml(a.cat)}</span></div>
             </div>
             <button
@@ -102,7 +105,7 @@ export function buildAssinaturas(assinaturas, observacoes, lancamentos = [], ext
   bindRemoveButtons();
 }
 
-function renderSuggestions(assinaturas, lancamentos, extratoTransacoes, sugestoesDispensa) {
+function renderSuggestions(assinaturas, lancamentos, extratoTransacoes, sugestoesDispensa, aliasLookup = new Map()) {
   const container = document.getElementById('assinaturaSuggestions');
   if (!container) return;
 
@@ -131,6 +134,7 @@ function renderSuggestions(assinaturas, lancamentos, extratoTransacoes, sugestoe
   container.innerHTML = `
     <div class="sub-grid">
       ${suggestions.map(suggestion => {
+        const displayName = buildDisplayNameMeta(suggestion.nome, { maxLength: 26, aliases: aliasLookup });
         const accent = CAT_ACCENT[suggestion.cat] || '#4fd1c5';
         const exemplos = suggestion.items
           .slice(0, 3)
@@ -141,7 +145,7 @@ function renderSuggestions(assinaturas, lancamentos, extratoTransacoes, sugestoe
             <div class="sub-card-top">
               <div class="sub-icon">💡</div>
               <div class="sub-info">
-                <div class="sub-name">${escapeHtml(suggestion.nome)}</div>
+                <div class="sub-name display-name display-name--card" title="${escapeHtml(displayName.raw)}">${escapeHtml(displayName.short)}</div>
                 <div class="sub-cat">
                   <span class="badge badge-blue" style="font-size:0.7rem">${escapeHtml(suggestion.cat)}</span>
                   <span class="badge badge-green" style="font-size:0.7rem;margin-left:6px">${suggestion.months.length} meses</span>
@@ -200,7 +204,7 @@ function detectarSugestoes(lancamentos, extratoTransacoes, dismissals, existingN
     if (!groups.has(key)) {
       groups.set(key, {
         key,
-        nome: toTitleCase(desc),
+        nome: buildDisplayNameMeta(desc, { maxLength: 48, stripInstallmentSuffix: true }).friendly,
         cat: String(item?.cat ?? 'Outros').trim() || 'Outros',
         valor,
         monthsMap: new Map(),
@@ -250,6 +254,7 @@ function bindSuggestionButtons(suggestions) {
       const key = button.getAttribute('data-suggestion-key');
       const suggestion = byKey.get(key);
       if (!suggestion) return;
+      const restoreButtonState = setPendingSuggestionState(button, true);
 
       try {
         if (action === 'accept') {
@@ -257,10 +262,13 @@ function bindSuggestionButtons(suggestions) {
         } else {
           await dismissSuggestion(suggestion);
         }
-        await window.refreshDashboard?.();
+        await window.refreshDashboard?.({ defer: true });
       } catch (error) {
         setFeedback('assinaturaSuggestionsFeedback', error instanceof Error ? error.message : 'Falha ao processar sugestão.', 'error');
+        restoreButtonState();
+        return;
       }
+      restoreButtonState();
     };
   });
 }
@@ -294,6 +302,34 @@ async function dismissSuggestion(suggestion) {
     motivo: 'dismissed',
   });
   setFeedback('assinaturaSuggestionsFeedback', `Sugestão "${suggestion.nome}" dispensada.`, 'success');
+}
+
+function setPendingSuggestionState(button, isPending) {
+  const card = button.closest('.assinatura-suggestion-card');
+  const buttons = card ? [...card.querySelectorAll('[data-suggestion-action]')] : [button];
+  const originalLabels = buttons.map(item => item.textContent);
+
+  if (isPending) {
+    if (card) {
+      card.style.opacity = '0.72';
+      card.style.pointerEvents = 'none';
+    }
+    buttons.forEach(item => {
+      item.disabled = true;
+      item.textContent = 'Processando...';
+    });
+  }
+
+  return () => {
+    if (card) {
+      card.style.opacity = '';
+      card.style.pointerEvents = '';
+    }
+    buttons.forEach((item, index) => {
+      item.disabled = false;
+      item.textContent = originalLabels[index];
+    });
+  };
 }
 
 function bindAssinaturaForm() {
@@ -359,15 +395,6 @@ function normalizeText(value) {
     .replace(/\s+/g, ' ')
     .replace(/[^\p{L}\p{N} ]/gu, ' ')
     .trim();
-}
-
-function toTitleCase(value) {
-  return String(value ?? '')
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(Boolean)
-    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
 }
 
 function sortMonthLabel(value) {

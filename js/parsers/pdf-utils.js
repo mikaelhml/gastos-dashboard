@@ -1,5 +1,5 @@
-const PDFJS_URL  = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.mjs';
-const WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs';
+const PDFJS_URL  = '../../vendor/pdfjs/pdf.min.mjs';
+const WORKER_URL = '../../vendor/pdfjs/pdf.worker.min.mjs';
 let cachedPdfPassword = '';
 
 export const MESES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];

@@ -13,7 +13,7 @@
  */
 
 export const DB_NAME = 'gastos_db_public';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 
 const STORE_DEFS = [
   { name: 'assinaturas',          keyPath: 'id',   autoIncrement: true  },
@@ -27,13 +27,14 @@ const STORE_DEFS = [
   { name: 'assinatura_sugestoes_dispensa', keyPath: 'key', autoIncrement: false },
   { name: 'categorizacao_regras', keyPath: 'id', autoIncrement: true },
   { name: 'categorizacao_memoria', keyPath: 'key', autoIncrement: false },
+  { name: 'transaction_aliases', keyPath: 'key', autoIncrement: false },
   { name: 'registrato_sugestoes_dispensa', keyPath: 'key', autoIncrement: false },
   { name: 'registrato_scr_snapshot', keyPath: 'id', autoIncrement: false },
   { name: 'registrato_scr_resumo_mensal', keyPath: 'mesRef', autoIncrement: false },
 ];
 
 export const FULL_BACKUP_STORE_NAMES = STORE_DEFS.map(store => store.name);
-export const FULL_BACKUP_OPTIONAL_EMPTY_STORE_NAMES = ['categorizacao_regras', 'categorizacao_memoria'];
+export const FULL_BACKUP_OPTIONAL_EMPTY_STORE_NAMES = ['categorizacao_regras', 'categorizacao_memoria', 'transaction_aliases'];
 export const CLEAR_IMPORTED_STORE_NAMES = [
   'extrato_transacoes',
   'extrato_summary',
@@ -52,6 +53,7 @@ export const CLEAR_ALL_DATA_STORE_NAMES = [
   'orcamentos',
   'categorizacao_regras',
   'categorizacao_memoria',
+  'transaction_aliases',
 ];
 
 let _db = null;
@@ -150,6 +152,50 @@ export function bulkAdd(storeName, items) {
     items.forEach(item => store.add(item));
     tx.oncomplete = () => resolve();
     tx.onerror    = e => reject(e.target.error);
+  });
+}
+
+export async function runStoresTransaction(storeNames, executor) {
+  await openDB();
+
+  const names = [...new Set(
+    (Array.isArray(storeNames) ? storeNames : [storeNames])
+      .map(name => String(name || '').trim())
+      .filter(Boolean),
+  )];
+
+  if (!names.length) {
+    throw new Error('Transação inválida: nenhuma store informada.');
+  }
+
+  return new Promise((resolve, reject) => {
+    const tx = _db.transaction(names, 'readwrite');
+    const stores = Object.fromEntries(names.map(name => [name, tx.objectStore(name)]));
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = event => reject(event.target.error);
+    tx.onabort = event => reject(event.target.error || new Error('Falha ao aplicar transação no IndexedDB.'));
+
+    try {
+      executor({
+        stores,
+        add(storeName, item) {
+          stores[storeName].add(item);
+        },
+        put(storeName, item) {
+          stores[storeName].put(item);
+        },
+        delete(storeName, key) {
+          stores[storeName].delete(key);
+        },
+        clear(storeName) {
+          stores[storeName].clear();
+        },
+      }, tx);
+    } catch (error) {
+      tx.abort();
+      reject(error);
+    }
   });
 }
 

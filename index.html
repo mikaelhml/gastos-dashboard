@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dashboard de Gastos</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='50' font-size='44'%3E%F0%9F%92%B3%3C/text%3E%3C/svg%3E">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="vendor/chartjs/chart.umd.js"></script>
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -21,9 +21,16 @@
 
 <a href="#mainContent" class="skip-link">Pular para o conteúdo principal</a>
 
-<header>
-  <h1>💳 Dashboard de Gastos</h1>
-  <span id="headerPeriodo">Carregando...</span>
+<header class="app-header">
+  <div class="app-header__brand">
+    <div class="app-header__eyebrow">Painel Financeiro Local</div>
+    <h1>Dashboard de Gastos</h1>
+    <p class="app-header__subtitle">Fluxo de caixa, crédito, recorrências e projeções com base nos dados importados do seu próprio histórico.</p>
+  </div>
+  <div class="app-header__status">
+    <span class="app-header__chip">Offline-first</span>
+    <span id="headerPeriodo">Carregando...</span>
+  </div>
 </header>
 
 <nav id="mobileTabNav" class="mobile-tab-nav" aria-label="Navegação rápida">
@@ -519,6 +526,10 @@
         <label class="form-field" style="grid-column:1/-1">
           <span>Descrição</span>
           <input id="editDesc" type="text" required>
+        </label>
+        <label class="form-field" style="grid-column:1/-1">
+          <span>Apelido de exibição</span>
+          <input id="editAlias" type="text" placeholder="Ex.: Mercado Livre, Zaffari, Itaú Financiamento">
         </label>
         <label class="form-field">
           <span>Categoria</span>

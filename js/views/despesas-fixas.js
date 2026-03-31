@@ -2,23 +2,26 @@ import { fmt, calcEndDate } from '../utils/formatters.js';
 import { addItem, deleteItem } from '../db.js';
 import { escapeHtml } from '../utils/dom.js';
 import { acceptRegistratoSuggestion, dismissRegistratoSuggestion } from '../utils/registrato-suggestions.js';
+import { buildAliasLookup, buildDisplayNameMeta } from '../utils/display-names.js';
 
 /**
  * Renderiza a aba Despesas Fixas.
  * @param {Array} despesasFixas
  * @param {Array} registratoSuggestions
  */
-export function buildDespesasFixas(despesasFixas, registratoSuggestions = []) {
+export function buildDespesasFixas(despesasFixas, registratoSuggestions = [], transactionAliases = []) {
+  const aliasLookup = buildAliasLookup(transactionAliases);
   const total = despesasFixas.reduce((s, d) => s + d.valor, 0);
 
   document.getElementById('fixedTotalBar').textContent = fmt(total);
   document.getElementById('fixedAnualBar').textContent = fmt(total * 12);
-  renderRegistratoSuggestions(registratoSuggestions);
+  renderRegistratoSuggestions(registratoSuggestions, aliasLookup);
 
   const tbody = document.getElementById('fixedTable');
   tbody.innerHTML = '';
 
   despesasFixas.forEach(d => {
+    const displayName = buildDisplayNameMeta(d.desc, { maxLength: 34, aliases: aliasLookup });
     const obsText = d.obs || '';
     const isNew  = obsText.includes('NOVO');
     const isParc = !!d.parcelas;
@@ -70,7 +73,7 @@ export function buildDespesasFixas(despesasFixas, registratoSuggestions = []) {
     tbody.innerHTML += `
       <tr class="${rowClass}">
         <td><span class="badge ${isNew ? 'badge-green' : 'badge-blue'}">${escapeHtml(d.cat)}</span></td>
-        <td>${escapeHtml(d.desc)}${tipoBadge}${isNew ? ' <span style="font-size:0.75rem;color:#68d391">✨ Novo</span>' : ''}</td>
+        <td><span class="display-name display-name--compact" title="${escapeHtml(displayName.raw)}">${escapeHtml(displayName.short)}</span>${tipoBadge}${isNew ? ' <span style="font-size:0.75rem;color:#68d391">✨ Novo</span>' : ''}</td>
         <td><strong>${fmt(d.valor)}</strong><br><span style="font-size:0.75rem;color:#718096">/mês</span></td>
         <td>${parcCol}</td>
         <td style="text-align:right">
@@ -96,7 +99,7 @@ export function buildDespesasFixas(despesasFixas, registratoSuggestions = []) {
   bindRemoveButtons();
 }
 
-function renderRegistratoSuggestions(suggestions) {
+function renderRegistratoSuggestions(suggestions, aliasLookup = new Map()) {
   const container = document.getElementById('registratoSuggestions');
   if (!container) return;
 
@@ -112,6 +115,7 @@ function renderRegistratoSuggestions(suggestions) {
   container.innerHTML = `
     <div class="sub-grid">
       ${suggestions.map(item => {
+        const displayName = buildDisplayNameMeta(item.nome, { maxLength: 26, aliases: aliasLookup });
         const accent = getSuggestionAccent(item.tipo, item.confianca);
         const tipoLabel = getTipoLabel(item.tipo);
         const confLabel = item.confianca ? item.confianca.toUpperCase() : 'BAIXA';
@@ -124,7 +128,7 @@ function renderRegistratoSuggestions(suggestions) {
             <div class="sub-card-top">
               <div class="sub-icon">${item.tipo === 'financiamento' ? '🏦' : item.tipo === 'parcelamento' ? '📦' : '📋'}</div>
               <div class="sub-info">
-                <div class="sub-name">${escapeHtml(item.nome)}</div>
+                <div class="sub-name display-name display-name--card" title="${escapeHtml(displayName.raw)}">${escapeHtml(displayName.short)}</div>
                 <div class="sub-cat">
                   <span class="badge badge-blue" style="font-size:0.7rem">${escapeHtml(item.cat)}</span>
                   <span class="badge ${getConfidenceBadge(item.confianca)}" style="font-size:0.7rem;margin-left:6px">${escapeHtml(confLabel)}</span>
@@ -188,6 +192,7 @@ function bindRegistratoSuggestionButtons(suggestions) {
       const key = button.getAttribute('data-registrato-key');
       const suggestion = byKey.get(key);
       if (!suggestion) return;
+      const restoreButtonState = setPendingSuggestionState(button, true);
 
       try {
         if (action === 'accept') {
@@ -197,12 +202,43 @@ function bindRegistratoSuggestionButtons(suggestions) {
           await dismissRegistratoSuggestion(suggestion);
           setFeedback('registratoSuggestionsFeedback', `Sugestão "${suggestion.nome}" dispensada.`, 'success');
         }
-        await window.refreshDashboard?.();
+        await window.refreshRegistratoSurfaces?.({ defer: true });
       } catch (error) {
         setFeedback('registratoSuggestionsFeedback', error instanceof Error ? error.message : 'Falha ao processar sugestão do Registrato.', 'error');
+        restoreButtonState();
+        return;
       }
+      restoreButtonState();
     };
   });
+}
+
+function setPendingSuggestionState(button, isPending) {
+  const card = button.closest('.registrato-suggestion-card');
+  const buttons = card ? [...card.querySelectorAll('[data-registrato-action]')] : [button];
+  const originalLabels = buttons.map(item => item.textContent);
+
+  if (isPending) {
+    if (card) {
+      card.style.opacity = '0.72';
+      card.style.pointerEvents = 'none';
+    }
+    buttons.forEach(item => {
+      item.disabled = true;
+      item.textContent = 'Processando...';
+    });
+  }
+
+  return () => {
+    if (card) {
+      card.style.opacity = '';
+      card.style.pointerEvents = '';
+    }
+    buttons.forEach((item, index) => {
+      item.disabled = false;
+      item.textContent = originalLabels[index];
+    });
+  };
 }
 
 function bindDespesaForm() {

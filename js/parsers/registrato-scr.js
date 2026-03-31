@@ -1,4 +1,4 @@
-import { addItem, bulkAdd, deleteItem, getAll } from '../db.js';
+import { getAll, runStoresTransaction } from '../db.js';
 import { buildImportQuality } from '../utils/import-integrity.js';
 import { computeHash, extrairEstruturaPDF, MESES_ABREV, parseBRL } from './pdf-utils.js';
 
@@ -130,13 +130,19 @@ export async function importarRegistratoScr(file, onProgress = () => {}) {
 
   onProgress(75);
 
-  await substituirMesesExistentes(resumosMensais.map(item => item.mesRef));
-  await bulkAdd('registrato_scr_resumo_mensal', resumosMensais);
-  await bulkAdd('registrato_scr_snapshot', snapshots);
+  const mesesExistentes = new Set(resumosMensais.map(item => item.mesRef));
+  const [resumosAtuais, snapshotsAtuais] = await Promise.all([
+    getAll('registrato_scr_resumo_mensal'),
+    getAll('registrato_scr_snapshot'),
+  ]);
+  const summaryDeleteKeys = resumosAtuais
+    .filter(resumo => mesesExistentes.has(resumo?.mesRef))
+    .map(resumo => resumo.mesRef);
+  const snapshotDeleteKeys = snapshotsAtuais
+    .filter(snapshot => mesesExistentes.has(snapshot?.mesRef))
+    .map(snapshot => snapshot.id);
 
-  onProgress(85);
-
-  await addItem('pdfs_importados', {
+  const pdfImportRecord = {
     hash,
     nome: file.name,
     tamanho: file.size,
@@ -144,7 +150,21 @@ export async function importarRegistratoScr(file, onProgress = () => {}) {
     transacoes: snapshots.length,
     mes: periodo,
     tipo: 'registrato-scr',
+  };
+
+  await runStoresTransaction([
+    'registrato_scr_resumo_mensal',
+    'registrato_scr_snapshot',
+    'pdfs_importados',
+  ], tx => {
+    summaryDeleteKeys.forEach(key => tx.delete('registrato_scr_resumo_mensal', key));
+    snapshotDeleteKeys.forEach(key => tx.delete('registrato_scr_snapshot', key));
+    resumosMensais.forEach(item => tx.add('registrato_scr_resumo_mensal', item));
+    snapshots.forEach(item => tx.add('registrato_scr_snapshot', item));
+    tx.add('pdfs_importados', pdfImportRecord);
   });
+
+  onProgress(85);
 
   onProgress(100);
 
@@ -449,26 +469,6 @@ function criarSnapshotConsolidado(bloco, blocoIndex, fileName, hash) {
   };
 }
 
-async function substituirMesesExistentes(mesesRef) {
-  const months = new Set(mesesRef);
-  const [resumos, snapshots] = await Promise.all([
-    getAll('registrato_scr_resumo_mensal'),
-    getAll('registrato_scr_snapshot'),
-  ]);
-
-  for (const resumo of resumos) {
-    if (months.has(resumo.mesRef)) {
-      await deleteItem('registrato_scr_resumo_mensal', resumo.mesRef);
-    }
-  }
-
-  for (const snapshot of snapshots) {
-    if (months.has(snapshot.mesRef)) {
-      await deleteItem('registrato_scr_snapshot', snapshot.id);
-    }
-  }
-}
-
 function consumeInstitution(lines, startIndex) {
   const parts = [lines[startIndex]];
   let cursor = startIndex + 1;
@@ -637,3 +637,10 @@ function slugify(value) {
     .replace(/^-+|-+$/g, '')
     .slice(0, 80);
 }
+
+export const __test__ = {
+  normalizarLinhas,
+  separarBlocosMensais,
+  parseMonthReference,
+  parsearBlocoMensal,
+};

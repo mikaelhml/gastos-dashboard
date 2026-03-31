@@ -70,6 +70,7 @@ async function loadDashboardData() {
     assinaturaSugestoesDispensa,
     categorizacaoRegras,
     categorizacaoMemoria,
+    transactionAliases,
     registratoSnapshots,
     registratoResumos,
     registratoSugestoesDispensa,
@@ -84,6 +85,7 @@ async function loadDashboardData() {
     getAll('assinatura_sugestoes_dispensa'),
     getAll('categorizacao_regras'),
     getAll('categorizacao_memoria'),
+    getAll('transaction_aliases'),
     getAll('registrato_scr_snapshot'),
     getAll('registrato_scr_resumo_mensal'),
     getAll('registrato_sugestoes_dispensa'),
@@ -115,6 +117,7 @@ async function loadDashboardData() {
     assinaturaSugestoesDispensa,
     categorizacaoRegras,
     categorizacaoMemoria,
+    transactionAliases,
     registratoSnapshots: registratoSnapshotsNormalizados,
     registratoResumos: registratoResumosNormalizados,
     registratoSugestoesDispensa,
@@ -201,6 +204,7 @@ async function renderDashboard() {
     assinaturaSugestoesDispensa,
     categorizacaoRegras,
     categorizacaoMemoria,
+    transactionAliases,
     registratoSnapshots,
     registratoResumos,
     registratoSugestoesDispensa,
@@ -245,20 +249,22 @@ async function renderDashboard() {
   );
 
   buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, extratoTransacoes, lancamentos, registratoInsights, cardBillSummaries);
-  buildAssinaturas(assinaturas, observacoes, lancamentos, extratoTransacoes, assinaturaSugestoesDispensa);
-  buildDespesasFixas(despesasFixas, registratoSuggestions);
-  buildParcelamentos(despesasFixas, lancamentos);
+  buildAssinaturas(assinaturas, observacoes, lancamentos, extratoTransacoes, assinaturaSugestoesDispensa, transactionAliases);
+  buildDespesasFixas(despesasFixas, registratoSuggestions, transactionAliases);
+  buildParcelamentos(despesasFixas, lancamentos, transactionAliases);
   initLancamentos(lancamentos, extratoTransacoes, assinaturas, despesasFixas, {
     analytics: spendAnalytics,
     cardBillSummaries,
     categorizationRules: categorizacaoRegras,
     categorizationMemories: categorizacaoMemoria,
     registratoContextRows: lancamentosContextRows,
+    transactionAliases,
   });
   initExtrato(extratoTransacoes, extratoSummary, {
     cardBillSummaries,
     registratoContextRows: extratoContextRows,
     registratoInsights,
+    transactionAliases,
   });
   initProjecao(despesasFixas, extratoSummary, registratoInsights, {
     scrProjectionModel,
@@ -268,10 +274,82 @@ async function renderDashboard() {
   await buildImportar();
 }
 
-function refreshDashboard() {
+async function renderRegistratoSurfaces() {
+  const {
+    assinaturas,
+    despesasFixas,
+    lancamentos,
+    extratoTransacoes,
+    extratoSummary,
+    registratoSnapshots,
+    registratoResumos,
+    registratoSugestoesDispensa,
+    transactionAliases,
+  } = await loadDashboardData();
+
+  const registratoSuggestions = buildRegistratoSuggestions({
+    despesasFixas,
+    assinaturas,
+    lancamentos,
+    extratoTransacoes,
+    registratoSnapshots,
+    registratoResumos,
+    dismissals: registratoSugestoesDispensa,
+  });
+  const registratoInsights = computeRegistratoInsights(registratoResumos, registratoSuggestions);
+  const cardBillSummaries = buildCardBillSummaries(lancamentos);
+  const scrProjectionModel = buildScrProjectionModel({
+    despesasFixas,
+    lancamentos,
+    extratoTransacoes,
+    registratoSnapshots,
+    registratoResumos,
+    dismissals: registratoSugestoesDispensa,
+  });
+  const parcelamentoSummary = buildParcelamentoSummary({
+    despesasFixas,
+    lancamentos,
+  });
+
+  buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, extratoTransacoes, lancamentos, registratoInsights, cardBillSummaries);
+  buildDespesasFixas(despesasFixas, registratoSuggestions, transactionAliases);
+  buildParcelamentos(despesasFixas, lancamentos, transactionAliases);
+  initProjecao(despesasFixas, extratoSummary, registratoInsights, {
+    scrProjectionModel,
+    parcelamentoSummary,
+  });
+  buildRegistrato(registratoResumos, registratoSnapshots, registratoSuggestions, registratoInsights);
+}
+
+function nextPaint() {
+  return new Promise(resolve => {
+    if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+      resolve();
+      return;
+    }
+    window.requestAnimationFrame(() => window.setTimeout(resolve, 0));
+  });
+}
+
+function refreshDashboard(options = {}) {
+  const { defer = false } = options;
   _refreshChain = _refreshChain
     .catch(() => {})
-    .then(() => renderDashboard());
+    .then(async () => {
+      if (defer) await nextPaint();
+      return renderDashboard();
+    });
+  return _refreshChain;
+}
+
+function refreshRegistratoSurfaces(options = {}) {
+  const { defer = false } = options;
+  _refreshChain = _refreshChain
+    .catch(() => {})
+    .then(async () => {
+      if (defer) await nextPaint();
+      return renderRegistratoSurfaces();
+    });
   return _refreshChain;
 }
 
@@ -334,6 +412,7 @@ if (typeof window !== 'undefined') {
   window.clearBase          = clearBase;
   window.clearAllDashboardData = clearAllDashboardData;
   window.refreshDashboard   = refreshDashboard;
+  window.refreshRegistratoSurfaces = refreshRegistratoSurfaces;
 
   // Emoji picker helpers — usados pelos onclick inline no HTML
   window.selectEmoji = function selectEmoji(inputId, previewId, pickerId, btn, emoji) {

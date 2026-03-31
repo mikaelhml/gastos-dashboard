@@ -1,7 +1,10 @@
 import { fmt, calcEndDate } from '../utils/formatters.js';
+import { buildAliasLookup, buildDisplayNameMeta } from '../utils/display-names.js';
+import { escapeHtml } from '../utils/dom.js';
 
-function buildCardContent(d, cardClass, badgeClass, accentColor, progressGradient) {
+function buildCardContent(d, cardClass, badgeClass, accentColor, progressGradient, aliases) {
   const p         = d.parcelas;
+  const displayName = buildDisplayNameMeta(d.desc, { maxLength: 28, aliases });
   const restantes = p.total - p.pagas;
   const pct       = Math.round((p.pagas / p.total) * 100);
   const endDate   = calcEndDate(p.inicio, p.total);
@@ -13,7 +16,7 @@ function buildCardContent(d, cardClass, badgeClass, accentColor, progressGradien
     <div class="${cardClass}">
       <div class="pc-header">
         <div>
-          <div class="pc-title">${d.desc}</div>
+          <div class="pc-title" title="${escapeHtml(displayName.raw)}">${escapeHtml(displayName.short)}</div>
           <div class="pc-cat">${d.cat} · ${p.label || ''}</div>
         </div>
         <div style="text-align:right">
@@ -56,7 +59,8 @@ function buildCardContent(d, cardClass, badgeClass, accentColor, progressGradien
  * @param {Array} despesasFixas
  * @param {Array} lancamentos
  */
-export function buildParcelamentos(despesasFixas, lancamentos) {
+export function buildParcelamentos(despesasFixas, lancamentos, transactionAliases = []) {
+  const aliasLookup = buildAliasLookup(transactionAliases);
   const todos          = despesasFixas.filter(d => d.parcelas);
   const financiamentos = todos.filter(d => d.parcelas.tipo === 'financiamento');
 
@@ -73,7 +77,7 @@ export function buildParcelamentos(despesasFixas, lancamentos) {
     const [anoI, mesI] = p.inicio.split('-').map(Number);
     financEndDates.push(new Date(anoI, mesI - 1 + p.total, 1).getTime());
     financGrid.innerHTML += buildCardContent(
-      d, 'financ-card', 'financ-badge', '#63b3ed', 'linear-gradient(90deg,#4299e1,#63b3ed)'
+      d, 'financ-card', 'financ-badge', '#63b3ed', 'linear-gradient(90deg,#4299e1,#63b3ed)', aliasLookup
     );
   });
 
@@ -100,6 +104,7 @@ export function buildParcelamentos(despesasFixas, lancamentos) {
   let parcAtivos = 0;
 
   Object.entries(grupos).forEach(([desc, items]) => {
+    const displayName = buildDisplayNameMeta(desc, { maxLength: 28, stripInstallmentSuffix: true, aliases: aliasLookup });
     items.sort((a, b) => {
       const [pa] = a.parcela.split('/').map(Number);
       const [pb] = b.parcela.split('/').map(Number);
@@ -137,7 +142,7 @@ export function buildParcelamentos(despesasFixas, lancamentos) {
       <div class="parc-card">
         <div class="pc-header">
           <div>
-            <div class="pc-title">${desc}</div>
+            <div class="pc-title" title="${escapeHtml(displayName.raw)}">${escapeHtml(displayName.short)}</div>
             <div class="pc-cat">Cartão de crédito · Compra parcelada</div>
           </div>
           <div style="text-align:right">
@@ -210,6 +215,7 @@ export function buildParcelamentos(despesasFixas, lancamentos) {
       return pa - pb;
     });
     items.forEach(l => {
+      const displayName = buildDisplayNameMeta(l.desc, { maxLength: 36, stripInstallmentSuffix: true, aliases: aliasLookup });
       const [atual, total] = l.parcela.split('/').map(Number);
       const pct      = Math.round((atual / total) * 100);
       const restantes = total - atual;
@@ -219,7 +225,7 @@ export function buildParcelamentos(despesasFixas, lancamentos) {
           <td style="color:#718096">${i++}</td>
           <td>${l.data}</td>
           <td><span class="badge badge-blue">${l.fatura}</span></td>
-          <td>${l.desc}</td>
+          <td><span class="display-name display-name--compact" title="${escapeHtml(displayName.raw)}">${escapeHtml(displayName.short)}</span></td>
           <td>
             <div style="display:flex;flex-direction:column;gap:3px">
               <span class="parcela-badge">📦 ${l.parcela}</span>

@@ -78,3 +78,36 @@ test('buildScrProjectionModel downgrades card-backed matches to contextual-only 
   assert.equal(model.totals.includedMonthlyTotal, 0);
   assert.equal(model.totals.contextualCount, 1);
 });
+
+test('buildScrProjectionModel honors resolved Registrato suggestion keys and keeps the commitment out of math', () => {
+  const model = buildScrProjectionModel({
+    despesasFixas: [],
+    lancamentos: [],
+    extratoTransacoes: [
+      { mes: 'Jan/2026', desc: 'DEBITO CAIXA HABITACAO', valor: 1250, tipo: 'saida', cat: 'Moradia' },
+      { mes: 'Fev/2026', desc: 'DEBITO CAIXA HABITACAO', valor: 1250, tipo: 'saida', cat: 'Moradia' },
+      { mes: 'Mar/2026', desc: 'DEBITO CAIXA HABITACAO', valor: 1250, tipo: 'saida', cat: 'Moradia' },
+    ],
+    registratoSnapshots: [
+      {
+        id: 'scr-caixa-03',
+        mesRef: '03/2026',
+        mesLabel: 'Mar/2026',
+        instituicao: 'Caixa',
+        detalheLinhas: ['CAIXA ECONOMICA FEDERAL', 'FINANCIAMENTO HABITACIONAL'],
+        operacoes: [{ categoria: 'Financiamento habitacional', emDia: 1250 }],
+      },
+    ],
+    registratoResumos: [],
+    dismissals: [
+      { key: 'registrato:caixa:financiamento-habitacional:conta:caixa:DEBITO CAIXA HABITACAO' },
+    ],
+  });
+
+  const dismissed = model.commitments.find(item => item.motivoStatus === 'dismissed');
+
+  assert.ok(dismissed, 'expected one dismissed contextual commitment');
+  assert.equal(dismissed.status, 'contextual-only');
+  assert.equal(dismissed.projectionImpactMonthly, 0);
+  assert.equal(model.totals.includedCount, 0);
+});

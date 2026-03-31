@@ -14,7 +14,7 @@
  *   Transferência enviada pelo Pix Claro - 40.432.544/0001-47 - CLARO PAY 119,90
  */
 
-import { addItem, putItem, getAll, bulkAdd, deleteItem } from '../db.js';
+import { putItem, getAll, runStoresTransaction } from '../db.js';
 import { inferirCanal } from '../utils/transaction-tags.js';
 import { buildImportQuality } from '../utils/import-integrity.js';
 import { applyCategorizationToImportedRows, buildCategorizationRuntime } from '../utils/categorization-engine.js';
@@ -318,44 +318,59 @@ export async function importarNubankConta(file, onProgress = () => {}) {
 
   // 9. Remover transações existentes do mesmo período e da mesma conta (não apagar outras contas)
   const todas = await getAll('extrato_transacoes');
-  for (const t of todas) {
-    if (mesesNoPDF.includes(t.mes) && t.banco === 'nubank') await deleteItem('extrato_transacoes', t.id);
-  }
-
-  // 10. Inserir novas transações
-  await bulkAdd('extrato_transacoes', categorizedTransacoes);
-  onProgress(85);
-
-  // 11. Atualizar âncora de saldo no summary se extraímos saldoInicial do PDF
-  if (saldoInicial !== null) {
-    const mesPrincipal = mesesNoPDF[0];
-    const mesAnt       = mesAnteriorStr(mesPrincipal);
-    const summaryAtual = await getAll('extrato_summary');
-    const entrada      = summaryAtual.find(s => s.mes === mesAnt);
-    if (entrada) {
-      if (entrada.saldoFinal !== saldoInicial) {
-        await putItem('extrato_summary', { ...entrada, saldoFinal: saldoInicial });
-      }
-    } else {
-      await putItem('extrato_summary', {
-        mes: mesAnt, entradas: 0, saidas: 0,
-        saldoFinal: saldoInicial, saldoInicial: 0,
-        rendimento: 0, apenasHistorico: true,
-      });
-    }
-  }
-
-  // 12. Registrar PDF
-  await addItem('pdfs_importados', {
-    hash, nome: file.name, tamanho: file.size,
-    importadoEm:  new Date().toISOString(),
-    transacoes:   categorizedTransacoes.length,
-    mes:          mesesNoPDF.join(', '),
+  const summaryAtual = saldoInicial !== null ? await getAll('extrato_summary') : [];
+  const pdfImportRecord = {
+    hash,
+    nome: file.name,
+    tamanho: file.size,
+    importadoEm: new Date().toISOString(),
+    transacoes: categorizedTransacoes.length,
+    mes: mesesNoPDF.join(', '),
     saldoInicial: saldoInicial ?? null,
-    saldoFinal:   saldoFinal   ?? null,
+    saldoFinal: saldoFinal ?? null,
+  };
+
+  const anchorSummaryRecord = (() => {
+    if (saldoInicial === null) return null;
+    const mesPrincipal = mesesNoPDF[0];
+    const mesAnt = mesAnteriorStr(mesPrincipal);
+    const entrada = summaryAtual.find(s => s.mes === mesAnt);
+    if (entrada) {
+      return entrada.saldoFinal !== saldoInicial
+        ? { ...entrada, saldoFinal: saldoInicial }
+        : null;
+    }
+
+    return {
+      mes: mesAnt,
+      entradas: 0,
+      saidas: 0,
+      saldoFinal: saldoInicial,
+      saldoInicial: 0,
+      rendimento: 0,
+      apenasHistorico: true,
+    };
+  })();
+
+  await runStoresTransaction(['extrato_transacoes', 'pdfs_importados', 'extrato_summary'], tx => {
+    todas.forEach(t => {
+      if (mesesNoPDF.includes(t.mes) && t.banco === 'nubank') {
+        tx.delete('extrato_transacoes', t.id);
+      }
+    });
+
+    categorizedTransacoes.forEach(item => tx.add('extrato_transacoes', item));
+
+    if (anchorSummaryRecord) {
+      tx.put('extrato_summary', anchorSummaryRecord);
+    }
+
+    tx.add('pdfs_importados', pdfImportRecord);
   });
 
-  // 13. Recalcular summary
+  onProgress(85);
+
+  // 10. Recalcular summary
   await recalcularSummary();
   onProgress(100);
 

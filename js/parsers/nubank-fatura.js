@@ -1,4 +1,4 @@
-import { addItem, getAll, bulkAdd, deleteItem } from '../db.js';
+import { getAll, runStoresTransaction } from '../db.js';
 import { inferirCanal } from '../utils/transaction-tags.js';
 import { applyCategorizationToImportedRows, buildCategorizationRuntime } from '../utils/categorization-engine.js';
 import {
@@ -129,15 +129,7 @@ export async function importarNubankFatura(file, onProgress = () => {}) {
     periodKey: mesFatura,
   });
 
-  for (const id of replacementPlan.deleteIds) {
-    await deleteItem('lancamentos', id);
-  }
-
-  await bulkAdd('lancamentos', dedupeResult.uniqueItems);
-
-  onProgress(85);
-
-  await addItem('pdfs_importados', {
+  const pdfImportRecord = {
     hash,
     nome: file.name,
     tamanho: file.size,
@@ -145,7 +137,15 @@ export async function importarNubankFatura(file, onProgress = () => {}) {
     transacoes: dedupeResult.uniqueItems.length,
     mes: mesFatura,
     tipo: 'fatura',
+  };
+
+  await runStoresTransaction(['lancamentos', 'pdfs_importados'], tx => {
+    replacementPlan.deleteIds.forEach(id => tx.delete('lancamentos', id));
+    dedupeResult.uniqueItems.forEach(item => tx.add('lancamentos', item));
+    tx.add('pdfs_importados', pdfImportRecord);
   });
+
+  onProgress(85);
 
   onProgress(100);
   const warnings = [
@@ -412,3 +412,9 @@ function parseDataSlash(rawData, mesFatura) {
     mes: `${MESES_ABREV[idxTransacao]}/${yyyy}`,
   };
 }
+
+export const __test__ = {
+  extrairMesFatura,
+  detectarEmissorFatura,
+  parsearLancamentos,
+};

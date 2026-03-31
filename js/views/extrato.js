@@ -2,11 +2,13 @@ import { fmt } from '../utils/formatters.js';
 import { escapeHtml } from '../utils/dom.js';
 import { enriquecerCanal, getCanalMeta, inferirCanal, listarCanais } from '../utils/transaction-tags.js';
 import { buildEmptyStateViewModels } from '../utils/empty-states.js';
+import { buildAliasLookup, buildDisplayNameMeta } from '../utils/display-names.js';
 
 let _transacoes = [];
 let _chartCategorias = null;
 let _chartBarrasCategorias = null;
 let _chartCanais = null;
+let _transactionAliasLookup = new Map();
 
 /**
  * Inicializa a aba Extrato Conta com os dados carregados.
@@ -17,6 +19,7 @@ export function initExtrato(transacoes, extratoSummary, context = {}) {
   // Filtra somente meses com dados reais (exclui entrada de histórico puro)
   const transacoesConta = transacoes.map(t => enriquecerCanal({ ...t, source: 'conta' }));
   const contextRows = (context.registratoContextRows || []).map(item => ({ ...item }));
+  _transactionAliasLookup = buildAliasLookup(context.transactionAliases || []);
   _transacoes = [...transacoesConta, ...contextRows].sort(compareExtratoItems);
   const summaryReal = extratoSummary.filter(m => !m.apenasHistorico);
   const emptyStates = buildEmptyStateViewModels({
@@ -151,7 +154,7 @@ function buildExtratoSummaryBar(transacoes, summaryReal) {
   const cats = [...new Set(transacoes.map(t => t.cat))].sort();
   const sel  = document.getElementById('extratoFilterCat');
   sel.innerHTML = '<option value="">Todas as categorias</option>';
-  cats.forEach(c => sel.innerHTML += `<option value="${c}">${c}</option>`);
+  cats.forEach(c => sel.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`);
 
   const canais = listarCanais(transacoes);
   const selCanal = document.getElementById('extratoFilterCanal');
@@ -167,7 +170,7 @@ function buildExtratoSummaryBar(transacoes, summaryReal) {
   const meses   = [...new Set(transacoes.map(t => t.mes))].sort();
   const selMes  = document.getElementById('extratoFilterMes');
   selMes.innerHTML = '<option value="">Todos os meses</option>';
-  meses.forEach(m => selMes.innerHTML += `<option value="${m}">${m}</option>`);
+  meses.forEach(m => selMes.innerHTML += `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`);
 }
 
 function buildExtratoCharts(transacoes, summaryReal) {
@@ -272,6 +275,7 @@ function buildExtratoFixosTable(transacoes, summaryReal) {
   }
 
   recorrentes.forEach(({ desc, cat, valoresPorMes, media }) => {
+    const displayName = buildDisplayNameMeta(desc, { maxLength: 34, aliases: _transactionAliasLookup });
     const vals = meses.map(m => valoresPorMes.get(m) || 0);
     const cells  = vals.map(v =>
       `<td style="text-align:right;color:${v > 0 ? '#fc8181' : '#718096'}">${v > 0 ? fmt(v) : '—'}</td>`
@@ -280,7 +284,7 @@ function buildExtratoFixosTable(transacoes, summaryReal) {
     tbody.innerHTML += `
       <tr>
         <td><span class="badge badge-blue" style="font-size:0.72rem">${cat || '—'}</span></td>
-        <td>${desc}</td>
+        <td><span class="display-name display-name--compact" title="${escapeHtml(displayName.raw)}">${escapeHtml(displayName.short)}</span></td>
         ${cells}
         <td style="text-align:right;font-weight:700;color:#f6ad55">${media > 0 ? fmt(media) : '—'}</td>
       </tr>`;
@@ -326,6 +330,7 @@ function renderExtrato(data) {
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#718096;padding:20px">Nenhuma movimentação importada.</td></tr>';
   } else {
     data.forEach((t, i) => {
+      const displayName = buildDisplayNameMeta(t.desc, { maxLength: t.contextoDerivado ? 54 : 42, aliases: _transactionAliasLookup });
       if (t.contextoDerivado) {
         const resumo = t.registratoResumo || {};
         const detalhamento = resumo.semRegistros
@@ -338,7 +343,7 @@ function renderExtrato(data) {
             <td data-label="Data">${escapeHtml(t.data)}</td>
             <td data-label="Mês"><span class="badge badge-purple">${escapeHtml(t.mes || '—')}</span></td>
             <td data-label="Descrição">
-              <div style="font-weight:600;color:#b794f4">${escapeHtml(t.desc)}</div>
+              <div class="display-name display-name--table" style="font-weight:600;color:#b794f4" title="${escapeHtml(displayName.raw)}">${escapeHtml(displayName.short)}</div>
               <div style="font-size:0.78rem;color:#718096;margin-top:4px">${escapeHtml(detalhamento)}</div>
             </td>
             <td data-label="Categoria"><div class="cell-badges"><span class="badge badge-purple">🏛️ ${escapeHtml(t.cat || 'Contexto SCR')}</span></div></td>
@@ -358,10 +363,10 @@ function renderExtrato(data) {
       tbody.innerHTML += `
         <tr>
           <td data-label="#" style="color:#718096">${i + 1}</td>
-          <td data-label="Data">${t.data}</td>
-          <td data-label="Mês"><span class="badge badge-blue">${t.mes}</span> ${bancoBadge}</td>
-          <td data-label="Descrição">${t.desc}</td>
-          <td data-label="Categoria"><div class="cell-badges"><span class="badge ${isEntrada ? 'badge-green' : 'badge-red'}">${t.cat}</span>${canalBadge}</div></td>
+          <td data-label="Data">${escapeHtml(t.data)}</td>
+          <td data-label="Mês"><span class="badge badge-blue">${escapeHtml(t.mes)}</span> ${bancoBadge}</td>
+          <td data-label="Descrição"><span class="display-name display-name--table" title="${escapeHtml(displayName.raw)}">${escapeHtml(displayName.short)}</span></td>
+          <td data-label="Categoria"><div class="cell-badges"><span class="badge ${isEntrada ? 'badge-green' : 'badge-red'}">${escapeHtml(t.cat)}</span>${canalBadge}</div></td>
           <td data-label="Valor" style="text-align:right;font-weight:600;color:${color}">${sign} ${fmt(t.valor)}</td>
         </tr>`;
     });

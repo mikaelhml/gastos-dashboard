@@ -13,7 +13,7 @@
  *   09/03/2026 FATURAAZUL INFINITE -12.461,32
  */
 
-import { addItem, putItem, getAll, bulkAdd, deleteItem } from '../db.js';
+import { putItem, getAll, runStoresTransaction } from '../db.js';
 import { inferirCanal } from '../utils/transaction-tags.js';
 import { buildImportQuality } from '../utils/import-integrity.js';
 import { applyCategorizationToImportedRows, buildCategorizationRuntime } from '../utils/categorization-engine.js';
@@ -256,45 +256,59 @@ export async function importarItauConta(file, onProgress = () => {}) {
 
   // 8. Remover transações existentes dos mesmos meses e da mesma conta (não apagar outras contas)
   const todas = await getAll('extrato_transacoes');
-  for (const t of todas) {
-    if (mesesNoPDF.includes(t.mes) && t.banco === 'itau') await deleteItem('extrato_transacoes', t.id);
-  }
-
-  // 9. Inserir novas transações
-  await bulkAdd('extrato_transacoes', categorizedTransacoes);
-  onProgress(80);
-
-  // 10. Definir âncora de saldo no summary (mês mais antigo do PDF)
-  if (anchor) {
+  const summaryAtual = anchor ? await getAll('extrato_summary') : [];
+  const pdfImportRecord = {
+    hash,
+    nome: file.name,
+    tamanho: file.size,
+    importadoEm: new Date().toISOString(),
+    transacoes: categorizedTransacoes.length,
+    mes: mesesNoPDF.join(', '),
+    saldoAnchor: anchor?.saldo ?? null,
+  };
+  const anchorSummaryRecord = (() => {
+    if (!anchor) return null;
     const mesAnchor = dataMesLabel(anchor.dateStr);
-    const summaryAtual = await getAll('extrato_summary');
     const entrada = summaryAtual.find(s => s.mes === mesAnchor);
     if (entrada) {
-      if (entrada.saldoFinal !== anchor.saldo) {
-        await putItem('extrato_summary', { ...entrada, saldoFinal: anchor.saldo });
-      }
-    } else {
-      await putItem('extrato_summary', {
-        mes: mesAnchor, entradas: 0, saidas: 0,
-        saldoFinal: anchor.saldo, saldoInicial: 0,
-        rendimento: 0, apenasHistorico: true,
-      });
+      return entrada.saldoFinal !== anchor.saldo
+        ? { ...entrada, saldoFinal: anchor.saldo }
+        : null;
     }
-  }
+
+    return {
+      mes: mesAnchor,
+      entradas: 0,
+      saidas: 0,
+      saldoFinal: anchor.saldo,
+      saldoInicial: 0,
+      rendimento: 0,
+      apenasHistorico: true,
+    };
+  })();
+
+  await runStoresTransaction(['extrato_transacoes', 'pdfs_importados', 'extrato_summary'], tx => {
+    todas.forEach(t => {
+      if (mesesNoPDF.includes(t.mes) && t.banco === 'itau') {
+        tx.delete('extrato_transacoes', t.id);
+      }
+    });
+
+    categorizedTransacoes.forEach(item => tx.add('extrato_transacoes', item));
+
+    if (anchorSummaryRecord) {
+      tx.put('extrato_summary', anchorSummaryRecord);
+    }
+
+    tx.add('pdfs_importados', pdfImportRecord);
+  });
+
+  onProgress(80);
 
   onProgress(85);
 
-  // 11. Registrar PDF importado
+  // 9. Recalcular summary encadeado
   const mesLabel = mesesNoPDF.join(', ');
-  await addItem('pdfs_importados', {
-    hash, nome: file.name, tamanho: file.size,
-    importadoEm: new Date().toISOString(),
-    transacoes:  categorizedTransacoes.length,
-    mes:         mesLabel,
-    saldoAnchor: anchor?.saldo ?? null,
-  });
-
-  // 12. Recalcular summary encadeado
   await recalcularSummary();
   onProgress(100);
 

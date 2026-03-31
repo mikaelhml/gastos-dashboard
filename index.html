@@ -401,20 +401,11 @@
     <button type="button" id="lancamentosExportCsvBtn" class="btn-inline-secondary">⬇ Exportar CSV (Excel)</button>
     <span id="lancamentosExportScope" class="export-scope-label"></span>
   </div>
-  <div id="lancamentosBulkBar" class="surface-panel lancamentos-bulk-bar" style="display:none">
-    <div id="lancamentosBulkSummary" class="lancamentos-bulk-summary"></div>
-    <div class="lancamentos-bulk-actions">
-      <button type="button" class="btn-inline-secondary" id="selectVisibleLancamentosBtn">Selecionar filtrados</button>
-      <button type="button" class="btn-inline-secondary" id="clearSelectedLancamentosBtn">Limpar seleção</button>
-      <button type="button" class="btn-inline-danger" id="deleteSelectedLancamentosBtn">Excluir selecionados</button>
-    </div>
-  </div>
   <div id="lancamentosDetailPanel" class="surface-panel lancamentos-detail-panel" style="display:none"></div>
   <div class="table-wrap" id="lancamentosTableWrap">
     <table>
       <thead>
         <tr>
-          <th style="width:42px;text-align:center"><input type="checkbox" id="selectAllLancamentos" aria-label="Selecionar lançamentos visíveis"></th>
           <th>#</th>
           <th><button type="button" class="table-sort-button" data-sort-lancamentos="data" data-sort-label="Data" onclick="sortLancamentosBy('data')">Data</button></th>
           <th><button type="button" class="table-sort-button" data-sort-lancamentos="fatura" data-sort-label="Fatura / Mês" onclick="sortLancamentosBy('fatura')">Fatura / Mês</button></th>

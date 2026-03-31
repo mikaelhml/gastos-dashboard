@@ -25,7 +25,6 @@ let _categorizationRules = [];
 let _categorizationMemories = [];
 let _firstRunLancamentosModel = null;
 let _transactionAliasLookup = new Map();
-let _selectedLancamentoIds = new Set();
 let _activeLancamentoId = null;
 const ANALYTICS_COLORS = ['#fc8181', '#63b3ed', '#68d391', '#f6e05e', '#b794f4', '#f6ad55', '#76e4f7', '#fbb6ce', '#90cdf4', '#a0aec0'];
 
@@ -77,7 +76,6 @@ export function initLancamentos(lancamentos, extratoTransacoes = [], _assinatura
 
   // Mescla e ordena por data decrescente
   _lancamentos = [...cartaoNorm, ...extratoNorm, ...contextRows].sort((a, b) => parseDataTs(b.data) - parseDataTs(a.data));
-  _selectedLancamentoIds = new Set();
   _activeLancamentoId = _lancamentos.find(item => !item.contextoDerivado)?.id ?? null;
 
   toggleLancamentosSections(!_firstRunLancamentosModel);
@@ -90,7 +88,6 @@ export function initLancamentos(lancamentos, extratoTransacoes = [], _assinatura
     }
     const count = document.getElementById('lancamentosCount');
     if (count) count.innerHTML = '';
-    renderLancamentosBulkBar([]);
     renderLancamentoDetailPanel(null);
     return;
   }
@@ -266,7 +263,7 @@ function renderLancamentos(data) {
   if (data.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="8">
+        <td colspan="7">
           <div class="empty-state">
             <strong>Nenhum lançamento encontrado</strong>
             Ajuste os filtros ou importe uma fatura para preencher esta aba.
@@ -349,13 +346,9 @@ function renderLancamentos(data) {
         )}</div>`
       : descHtml;
 
-    const isSelected = _selectedLancamentoIds.has(String(l.id));
     const isActive = String(_activeLancamentoId) === String(l.id);
     tbody.innerHTML += `
-      <tr class="lancamentos-row ${isParc ? 'row-parcela' : ''}${isClassificado ? ' row-classificado' : ''}${isConta ? ' row-conta' : ''}${isContexto ? ' row-contexto-scr' : ''}${isSelected ? ' is-selected' : ''}${isActive ? ' is-active' : ''}" data-row-lancamento-id="${l.id ?? ''}">
-        <td data-label="Sel." style="text-align:center">
-          ${!isContexto ? `<input type="checkbox" class="lancamentos-row-select" data-select-lancamento-id="${l.id ?? ''}" ${isSelected ? 'checked' : ''} aria-label="Selecionar lançamento">` : ''}
-        </td>
+      <tr class="lancamentos-row ${isParc ? 'row-parcela' : ''}${isClassificado ? ' row-classificado' : ''}${isConta ? ' row-conta' : ''}${isContexto ? ' row-contexto-scr' : ''}${isActive ? ' is-active' : ''}" data-row-lancamento-id="${l.id ?? ''}">
         <td data-label="#" style="color:#718096">${i + 1}</td>
         <td data-label="Data">${escapeHtml(l.data)}</td>
         <td data-label="Fatura/Mês"><span class="badge badge-blue">${escapeHtml(l.fatura)}</span>${origemBadge}</td>
@@ -381,25 +374,12 @@ function renderLancamentos(data) {
     `${nClass ? ` &nbsp;·&nbsp; ${nClass} classificados` : ''}`;
 
   bindLancamentoRowInteractions(data);
-  renderLancamentosBulkBar(data);
   renderLancamentoDetailPanel(_lancamentos.find(item => String(item.id) === String(_activeLancamentoId)) || null);
   bindActionButtons();
   bindEditDeleteButtons();
 }
 
 function bindLancamentoRowInteractions(data) {
-  document.querySelectorAll('[data-select-lancamento-id]').forEach(input => {
-    input.addEventListener('click', event => event.stopPropagation());
-    input.addEventListener('change', event => {
-      const rawId = input.getAttribute('data-select-lancamento-id');
-      if (!rawId) return;
-      if (input.checked) _selectedLancamentoIds.add(String(rawId));
-      else _selectedLancamentoIds.delete(String(rawId));
-      renderLancamentosBulkBar(data);
-      renderLancamentos(getSortedLancamentos(data));
-    });
-  });
-
   document.querySelectorAll('[data-row-lancamento-id]').forEach(row => {
     row.addEventListener('click', event => {
       const target = event.target;
@@ -409,72 +389,17 @@ function bindLancamentoRowInteractions(data) {
       const rawId = row.getAttribute('data-row-lancamento-id');
       if (!rawId) return;
       _activeLancamentoId = rawId;
-      renderLancamentos(getSortedLancamentos(data));
+      syncActiveLancamentoRow();
+      renderLancamentoDetailPanel(_lancamentos.find(item => String(item.id) === String(_activeLancamentoId)) || null);
     });
   });
 }
 
-function renderLancamentosBulkBar(data) {
-  const panel = document.getElementById('lancamentosBulkBar');
-  const summary = document.getElementById('lancamentosBulkSummary');
-  const selectAll = document.getElementById('selectAllLancamentos');
-  const selectVisibleBtn = document.getElementById('selectVisibleLancamentosBtn');
-  const clearBtn = document.getElementById('clearSelectedLancamentosBtn');
-  const deleteBtn = document.getElementById('deleteSelectedLancamentosBtn');
-  if (!panel || !summary) return;
-
-  const visibleIds = data.filter(item => !item.contextoDerivado).map(item => String(item.id));
-  const selectedVisible = visibleIds.filter(id => _selectedLancamentoIds.has(id));
-  const count = selectedVisible.length;
-
-  panel.style.display = visibleIds.length ? '' : 'none';
-  summary.textContent = count
-    ? `${count} lançamento(s) selecionado(s)`
-    : 'Nenhum lançamento selecionado';
-
-  if (selectAll) {
-    selectAll.checked = count > 0 && count === visibleIds.length;
-    selectAll.indeterminate = count > 0 && count < visibleIds.length;
-    selectAll.onchange = () => {
-      if (selectAll.checked) visibleIds.forEach(id => _selectedLancamentoIds.add(id));
-      else visibleIds.forEach(id => _selectedLancamentoIds.delete(id));
-      renderLancamentos(getSortedLancamentos(data));
-    };
-  }
-
-  if (selectVisibleBtn) {
-    selectVisibleBtn.onclick = () => {
-      visibleIds.forEach(id => _selectedLancamentoIds.add(id));
-      renderLancamentos(getSortedLancamentos(data));
-    };
-  }
-
-  if (clearBtn) {
-    clearBtn.onclick = () => {
-      visibleIds.forEach(id => _selectedLancamentoIds.delete(id));
-      renderLancamentos(getSortedLancamentos(data));
-    };
-  }
-
-  if (deleteBtn) {
-    deleteBtn.disabled = count === 0;
-    deleteBtn.onclick = async () => {
-      if (!count) return;
-      if (!confirm(`Excluir ${count} lançamento(s) selecionado(s)?`)) return;
-      const selectedRows = _lancamentos.filter(item => selectedVisible.includes(String(item.id)));
-      for (const item of selectedRows) {
-        await deleteItem(getStore(item), prepareForDb(item).id ?? item._origId ?? item.id);
-      }
-      _lancamentos = _lancamentos.filter(item => !selectedVisible.includes(String(item.id)));
-      selectedVisible.forEach(id => _selectedLancamentoIds.delete(id));
-      if (_activeLancamentoId && !_lancamentos.some(item => String(item.id) === String(_activeLancamentoId))) {
-        _activeLancamentoId = _lancamentos.find(item => !item.contextoDerivado)?.id ?? null;
-      }
-      setFeedback(`${count} lançamento(s) excluído(s).`, 'success');
-      renderLancamentos(getSortedLancamentos(_lancamentos));
-      await window.refreshDashboard?.({ defer: true });
-    };
-  }
+function syncActiveLancamentoRow() {
+  document.querySelectorAll('[data-row-lancamento-id]').forEach(row => {
+    const rowId = row.getAttribute('data-row-lancamento-id');
+    row.classList.toggle('is-active', String(rowId) === String(_activeLancamentoId));
+  });
 }
 
 function renderLancamentoDetailPanel(lancamento) {
@@ -537,7 +462,6 @@ function renderLancamentoDetailPanel(lancamento) {
     if (!confirm(`Excluir lançamento "${lancamento.desc}"?`)) return;
     await deleteItem(getStore(lancamento), prepareForDb(lancamento).id ?? lancamento._origId ?? lancamento.id);
     _lancamentos = _lancamentos.filter(item => String(item.id) !== String(lancamento.id));
-    _selectedLancamentoIds.delete(String(lancamento.id));
     _activeLancamentoId = _lancamentos.find(item => !item.contextoDerivado)?.id ?? null;
     renderLancamentos(getSortedLancamentos(_lancamentos));
     await window.refreshDashboard?.({ defer: true });

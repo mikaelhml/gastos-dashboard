@@ -10,14 +10,14 @@ const INLINE_NOISE_PATTERNS = [
 ];
 
 export function buildDisplayNameMeta(value, options = {}) {
-  const { maxLength = 42, stripInstallmentSuffix = false, aliases = null } = options;
+  const { maxLength = 42, stripInstallmentSuffix = false, aliases = null, transactionContext = null } = options;
   const raw = collapseWhitespace(value);
   if (!raw) {
     return { raw: '', friendly: '', short: '', changed: false };
   }
 
   const alias = resolveDisplayAlias(raw, { aliases, stripInstallmentSuffix });
-  const cleaned = compactTransactionName(raw, { stripInstallmentSuffix });
+  const cleaned = compactTransactionName(raw, { stripInstallmentSuffix, transactionContext });
   const friendly = toDisplayCase(alias || cleaned || raw);
   const short = truncateAtWordBoundary(friendly, maxLength);
 
@@ -47,9 +47,19 @@ export function buildTransactionAliasKey(value, options = {}) {
 }
 
 export function compactTransactionName(value, options = {}) {
-  const { stripInstallmentSuffix = false } = options;
+  const { stripInstallmentSuffix = false, transactionContext = null } = options;
   let result = collapseWhitespace(value);
   if (!result) return '';
+
+  const pixLabel = buildPixLabel(result, transactionContext);
+  if (pixLabel) {
+    return pixLabel;
+  }
+
+  const boletoLabel = buildBoletoLabel(result, transactionContext);
+  if (boletoLabel) {
+    return boletoLabel;
+  }
 
   if (stripInstallmentSuffix) {
     result = result.replace(/\s+\d{1,2}\/\d{1,2}\s*$/u, '');
@@ -122,6 +132,76 @@ function truncateAtWordBoundary(value, maxLength) {
   const boundary = slice.lastIndexOf(' ');
   const trimmed = (boundary >= Math.max(8, Math.floor(maxLength * 0.55)) ? slice.slice(0, boundary) : slice).trim();
   return `${trimmed}…`;
+}
+
+function buildPixLabel(value, transactionContext = null) {
+  const normalized = normalizeAliasKey(value);
+  if (!normalized.includes('pix')) return '';
+
+  const direction = resolvePixDirection(normalized, transactionContext);
+  const counterparty = extractPixCounterparty(value);
+  if (!counterparty) return '';
+
+  const formattedCounterparty = toDisplayCase(counterparty);
+  return direction ? `Pix ${direction} ${formattedCounterparty}` : `Pix ${formattedCounterparty}`;
+}
+
+function buildBoletoLabel(value, transactionContext = null) {
+  const channel = String(transactionContext?.channel || '').trim().toLowerCase();
+  const normalized = normalizeAliasKey(value);
+  if (channel !== 'boleto' && !normalized.includes('boleto')) return '';
+
+  const counterparty = collapseWhitespace(value)
+    .replace(/pagamento\s+de\s+boleto\s+efetuado\s*/iu, '')
+    .replace(/pag(?:amento|to)\s+boleto\s*/iu, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  if (!counterparty) return 'Boleto';
+  return `Boleto ${toDisplayCase(counterparty)}`;
+}
+
+function resolvePixDirection(normalized, transactionContext = null) {
+  if (/\b(enviad[oa]|pagamento|saida)\b/.test(normalized)) return 'Enviado';
+  if (/\b(recebid[oa]|entrada)\b/.test(normalized)) return 'Recebido';
+
+  const direction = String(transactionContext?.direction || '').trim().toLowerCase();
+  if (direction === 'saida') return 'Enviado';
+  if (direction === 'entrada') return 'Recebido';
+  return '';
+}
+
+function extractPixCounterparty(value) {
+  let result = collapseWhitespace(value)
+    .replace(/transfer[eê]ncia\s+(?:enviada|recebida)\s+pelo\s+pix\s+/iu, '')
+    .replace(/pix\s+(?:transf|transferencia|transferência)?\s*/iu, '')
+    .replace(/^(?:enviado|recebido)\s+/iu, '')
+    .replace(/\b(?:chave\s+pix|pelo\s+pix)\b/giu, ' ')
+    .replace(/\b\d{1,2}\/\d{1,2}\b/gu, ' ')
+    .replace(/\b(?:cpf|cnpj)\b[:#-]?\s*[\d./-]{6,}\b/giu, ' ')
+    .replace(/[\d./-]{11,18}/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  if (!result) return '';
+
+  const segments = result
+    .split(/\s+-\s+/)
+    .map(part => collapseWhitespace(part).replace(/^[-\s]+|[-\s]+$/g, ''))
+    .filter(Boolean);
+
+  const preferred = [...segments]
+    .reverse()
+    .find(part => /\p{L}{3,}/u.test(part) && !isLikelyBankOrRail(part))
+    || [...segments].reverse().find(part => /\p{L}{3,}/u.test(part))
+    || segments[0]
+    || result;
+  return collapseWhitespace(preferred);
+}
+
+function isLikelyBankOrRail(value) {
+  const normalized = normalizeAliasKey(value);
+  return /\b(banco|bank|nubank|itau|itaucard|bradesco|caixa|sicredi|santander|inter|mercado pago|mercadopago|pix|ted|doc|transferencia|transferencia)\b/.test(normalized);
 }
 
 function normalizeAliasKey(value) {

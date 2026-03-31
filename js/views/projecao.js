@@ -1,6 +1,7 @@
 import { fmt } from '../utils/formatters.js';
 import { escapeHtml } from '../utils/dom.js';
 import { buildProjectionSchedule } from '../utils/projection-model.js';
+import { buildAutomaticProjectionInputs } from '../utils/projection-auto.js';
 
 let _chartSaldo  = null;
 let _chartBarras = null;
@@ -14,6 +15,7 @@ let _ultimoMes  = 'Fev/2026';
 let _registratoInsights = null;
 let _scrProjectionModel = createEmptyScrModel();
 let _parcelamentoSummary = createEmptyParcelamentoSummary();
+let _autoProjection = { inputs: { salario: 0, rendaExtra: 0, itau: 0, outros: 0, meses: 6 }, notes: [], diagnostics: {} };
 
 function createEmptyScrModel() {
   return {
@@ -45,6 +47,16 @@ function parseMonthCount() {
   return Number.isInteger(value) && value > 0 ? value : 6;
 }
 
+function setNumberInputValue(id, value) {
+  const input = document.getElementById(id);
+  if (!input) return;
+  input.value = String(roundMoney(value));
+}
+
+function roundMoney(value) {
+  return Math.round(Number(value || 0) * 100) / 100;
+}
+
 function computeFixoMensal(despesasFixas) {
   const itens = {};
   despesasFixas.forEach(d => {
@@ -65,13 +77,21 @@ export function initProjecao(despesasFixas, extratoSummary, registratoInsights =
   _registratoInsights = registratoInsights;
   _scrProjectionModel = options?.scrProjectionModel || createEmptyScrModel();
   _parcelamentoSummary = options?.parcelamentoSummary || createEmptyParcelamentoSummary();
+  _autoProjection = buildAutomaticProjectionInputs({
+    extratoTransacoes: options?.extratoTransacoes || [],
+    extratoSummary,
+    cardBillSummaries: options?.cardBillSummaries || [],
+    recurringCommitments: _despesasFixas,
+  });
 
   const summaryReal = extratoSummary.filter(m => !m.apenasHistorico);
   const ultimo = summaryReal[summaryReal.length - 1];
   _saldoAtual = ultimo ? ultimo.saldoFinal : 0;
   _ultimoMes  = ultimo ? ultimo.mes : 'Fev/2026';
 
+  applyAutomaticInputs();
   renderScrProjectionPanel();
+  renderAutomaticProjectionPanel();
   buildCenarios();
   recalcularProjecao();
 }
@@ -114,14 +134,33 @@ function calcProjecao(salario, rendaExtra, itau, outros, nMeses) {
 }
 
 function buildCenarios() {
+  const base = _autoProjection?.inputs || { salario: 0, rendaExtra: 0, itau: 0, outros: 0 };
   const cenarios = [
-    { id: 'otimista', sal: 10000, itau: 2500, outros: 800 },
-    { id: 'realista', sal: 7000, itau: 1800, outros: 1000 },
-    { id: 'pessimista', sal: 5000, itau: 2500, outros: 1800 },
+    {
+      id: 'otimista',
+      sal: roundMoney((base.salario + base.rendaExtra) * 1.06),
+      rendaExtra: roundMoney(base.rendaExtra * 1.1),
+      itau: roundMoney(base.itau * 0.92),
+      outros: roundMoney(base.outros * 0.9),
+    },
+    {
+      id: 'realista',
+      sal: base.salario,
+      rendaExtra: base.rendaExtra,
+      itau: base.itau,
+      outros: base.outros,
+    },
+    {
+      id: 'pessimista',
+      sal: roundMoney(base.salario * 0.92),
+      rendaExtra: roundMoney(base.rendaExtra * 0.65),
+      itau: roundMoney(base.itau * 1.08),
+      outros: roundMoney(base.outros * 1.12),
+    },
   ];
 
   cenarios.forEach(c => {
-    const rows = calcProjecao(c.sal, 0, c.itau, c.outros, 24);
+    const rows = calcProjecao(c.sal, c.rendaExtra, c.itau, c.outros, 24);
     const firstRow = rows[0] || { resultado: 0 };
     const idCap = c.id.charAt(0).toUpperCase() + c.id.slice(1);
 
@@ -138,12 +177,12 @@ function buildCenarios() {
     }
   });
 
-  const equilibrioRows = calcProjecao(0, 0, 1800, 1000, 1);
+  const equilibrioRows = calcProjecao(0, 0, base.itau, base.outros, 1);
   const equilibrio = equilibrioRows[0] || { fixo: _fixoMensal.total, scrIncluido: 0 };
-  const peq = equilibrio.fixo + equilibrio.scrIncluido + 1800 + 1000;
+  const peq = equilibrio.fixo + equilibrio.scrIncluido + base.itau + base.outros;
   document.getElementById('scEquilibrioVal').textContent = `${fmt(peq)}/mês`;
   document.getElementById('scEquilibrioSub').textContent =
-    `Mês 1: Fixos ${fmt(equilibrio.fixo)} + SCR incluído ${fmt(equilibrio.scrIncluido)} + Cartão ${fmt(1800)} + Outros ${fmt(1000)}`;
+    `Mês 1: Fixos ${fmt(equilibrio.fixo)} + SCR incluído ${fmt(equilibrio.scrIncluido)} + Cartão ${fmt(base.itau)} + Outros ${fmt(base.outros)}`;
 }
 
 export function recalcularProjecao() {
@@ -164,17 +203,66 @@ export function recalcularProjecao() {
     Resultado do próximo mês:
     <strong style="color:${statusColor}">${resultMes >= 0 ? '+' : ''}${escapeHtml(fmt(resultMes))}</strong>
     <span style="color:#90cdf4">· Fixos ${escapeHtml(fmt(firstRow.fixo))}</span>
-    <span style="color:#b794f4">· SCR incluído ${escapeHtml(fmt(firstRow.scrIncluido))}</span>
     <span style="color:#f6ad55">· Cartão ${escapeHtml(fmt(itau))}</span>
     <span style="color:#76e4f7">· Outros ${escapeHtml(fmt(outros))}</span>
+    ${firstRow.scrIncluido > 0
+      ? `<span style="color:#b794f4">· Compromissos extras ${escapeHtml(fmt(firstRow.scrIncluido))}</span>`
+      : ''}
     ${commitmentTotals.contextualCount > 0 || commitmentTotals.conflictCount > 0
-      ? `<span style="color:#a0aec0">· ${commitmentTotals.conflictCount} conflito(s) e ${commitmentTotals.contextualCount} item(ns) contextuais fora da matemática</span>`
+      ? `<span style="color:#a0aec0">· ${commitmentTotals.contextualCount} leitura(s) contextuais e ${commitmentTotals.conflictCount} conflito(s) fora do cálculo</span>`
       : ''}`;
 
   renderScrProjectionPanel();
+  renderAutomaticProjectionPanel();
   renderProjecaoTable(rows);
   updateProjecaoCharts(rows, itau, outros);
   renderAlerta(rows, resultMes);
+}
+
+function applyAutomaticInputs() {
+  const inputs = _autoProjection?.inputs || {};
+  setNumberInputValue('pSalario', inputs.salario || 0);
+  setNumberInputValue('pRendaExtra', inputs.rendaExtra || 0);
+  setNumberInputValue('pItau', inputs.itau || 0);
+  setNumberInputValue('pOutros', inputs.outros || 0);
+  const monthSelect = document.getElementById('pMeses');
+  if (monthSelect && String(inputs.meses || 6) !== monthSelect.value) {
+    monthSelect.value = String(inputs.meses || 6);
+  }
+}
+
+function renderAutomaticProjectionPanel() {
+  const panel = document.getElementById('projecaoAutoPanel');
+  if (!panel) return;
+
+  const inputs = _autoProjection?.inputs || {};
+  const notes = _autoProjection?.notes || [];
+  const diagnostics = _autoProjection?.diagnostics || {};
+
+  panel.innerHTML = `
+    <div class="helper-panel-header">
+      <div>
+        <h3>Leitura automática dos seus dados</h3>
+        <p>A projeção já nasce preenchida com estimativas baseadas no extrato, nas faturas importadas e nos compromissos recorrentes cadastrados. Você só ajusta se quiser simular outro cenário.</p>
+      </div>
+      <span class="badge badge-blue">${diagnostics.monthsAnalyzed || 0} mês(es) analisados</span>
+    </div>
+    <div class="cards" style="margin-top:12px">
+      ${notes.map(item => `
+        <div class="card" style="--accent:${resolveAutoEstimateAccent(item.id)}">
+          <div class="label">${escapeHtml(item.label)}</div>
+          <div class="value">${escapeHtml(fmt(item.value || 0))}</div>
+          <div class="sub">${escapeHtml(item.note || '')}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="info-panel" style="margin-top:16px;margin-bottom:0">
+      <div class="info-panel-title">Parâmetros aplicados automaticamente</div>
+      <div class="info-panel-body">
+        Salário recorrente ${escapeHtml(fmt(inputs.salario || 0))} · Renda extra ${escapeHtml(fmt(inputs.rendaExtra || 0))} ·
+        Cartão ${escapeHtml(fmt(inputs.itau || 0))} · Outros ${escapeHtml(fmt(inputs.outros || 0))}.
+      </div>
+    </div>`;
 }
 
 function renderScrProjectionPanel() {
@@ -186,34 +274,57 @@ function renderScrProjectionPanel() {
 
   const commitments = _scrProjectionModel?.commitments || [];
   const totals = _scrProjectionModel?.totals || createEmptyScrModel().totals;
+  const autoInputs = _autoProjection?.inputs || { salario: 0, rendaExtra: 0, itau: 0, outros: 0 };
+  const topCategories = _autoProjection?.diagnostics?.topVariableCategories || [];
+  const totalCommitments = Number(_fixoMensal?.total || 0) + Number(totals.includedMonthlyTotal || 0);
+  const saldoMensalBase = (autoInputs.salario + autoInputs.rendaExtra) - (totalCommitments + autoInputs.itau + autoInputs.outros);
 
   summaryEl.innerHTML = `
     <div class="summary-bar" style="margin-top:8px">
-      <div class="sb-item"><span class="sb-label">SCR incluído/mês:</span><span class="sb-value" style="color:#b794f4">${escapeHtml(fmt(totals.includedMonthlyTotal || 0))}</span></div>
+      <div class="sb-item"><span class="sb-label">Compromissos confirmados:</span><span class="sb-value" style="color:#90cdf4">${escapeHtml(fmt(totalCommitments))}</span></div>
       <div class="divider"></div>
-      <div class="sb-item"><span class="sb-label">Conflitos:</span><span class="sb-value">${totals.conflictCount}</span></div>
+      <div class="sb-item"><span class="sb-label">Cartão médio:</span><span class="sb-value" style="color:#fc8181">${escapeHtml(fmt(autoInputs.itau || 0))}</span></div>
       <div class="divider"></div>
-      <div class="sb-item"><span class="sb-label">Contextuais:</span><span class="sb-value">${totals.contextualCount}</span></div>
+      <div class="sb-item"><span class="sb-label">Variáveis estimadas:</span><span class="sb-value" style="color:#f6ad55">${escapeHtml(fmt(autoInputs.outros || 0))}</span></div>
       <div class="divider"></div>
-      <div class="sb-item"><span class="sb-label">Impacto bloqueado:</span><span class="sb-value">${escapeHtml(fmt(totals.conflictMonthlyTotal || 0))}</span></div>
+      <div class="sb-item"><span class="sb-label">Resultado base:</span><span class="sb-value" style="color:${saldoMensalBase >= 0 ? '#68d391' : '#fc8181'}">${saldoMensalBase >= 0 ? '+' : ''}${escapeHtml(fmt(saldoMensalBase))}</span></div>
     </div>`;
 
   commitmentsEl.innerHTML = commitments.length
     ? commitments.map(renderCommitmentCard).join('')
     : `
-      <div class="surface-panel" style="padding:16px;color:#a0aec0">
-        Nenhum compromisso SCR elegível ou contextual foi detectado com os dados importados atuais.
+      <div class="surface-panel" style="padding:16px">
+        <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap">
+          <div>
+            <strong style="color:#e2e8f0">O SCR não alterou a matemática da projeção</strong>
+            <div style="margin-top:8px;color:#a0aec0;font-size:0.9rem">
+              Com os dados atuais, não houve compromisso do Registrato forte o bastante para entrar automaticamente no cálculo.
+            </div>
+          </div>
+          <div class="helper-badges">
+            ${topCategories.map(item => `<span class="badge badge-yellow">${escapeHtml(item.cat)} · ${escapeHtml(fmt(item.total))}</span>`).join('')}
+          </div>
+        </div>
+        <div style="margin-top:12px;color:#718096;font-size:0.82rem">
+          Categorias acima ajudam a entender o que mais pressiona sua saída variável recente.
+        </div>
       </div>`;
 
   trackerEl.innerHTML = `
     <div class="helper-panel-header">
       <div>
-        <h3>📦 Impacto compacto de financiamentos e parcelas</h3>
-        <p>Resumo rápido para a Projeção. O detalhamento completo continua na aba <code>📋 Despesas & Parcelas</code>.</p>
+        <h3>📦 Pressões recorrentes e parcelamentos</h3>
+        <p>Resumo rápido do que mais pesa mês a mês: compromissos fixos, parcelas ativas e leitura contextual do Registrato quando houver algo acionável.</p>
       </div>
       <button type="button" class="btn-inline-secondary" onclick="switchTab(null, 'despesas')">Abrir Despesas & Parcelas</button>
     </div>
     <div class="cards" style="margin-top:12px">
+      <div class="card" style="--accent:#7cc7ff">
+        <div class="label">📌 Fixos + assinaturas</div>
+        <div class="value">${escapeHtml(fmt(_fixoMensal.total || 0))}</div>
+        <div class="sub">Base confirmada que entra antes do cartão e dos variáveis.</div>
+        <div class="sub" style="margin-top:6px;color:#90cdf4">${_despesasFixas.length} item(ns) programado(s)</div>
+      </div>
       <div class="card" style="--accent:#63b3ed">
         <div class="label">🏦 Financiamentos ativos</div>
         <div class="value">${_parcelamentoSummary.financiamentos.ativos}</div>
@@ -225,6 +336,12 @@ function renderScrProjectionPanel() {
         <div class="value">${_parcelamentoSummary.cartaoParcelado.ativos}</div>
         <div class="sub">${escapeHtml(fmt(_parcelamentoSummary.cartaoParcelado.totalMensal))}/mês · saldo ${escapeHtml(fmt(_parcelamentoSummary.cartaoParcelado.saldoRestante))}</div>
         <div class="sub" style="margin-top:6px;color:#fbd38d">Próximo término: ${escapeHtml(_parcelamentoSummary.cartaoParcelado.proximoTermino || '—')}</div>
+      </div>
+      <div class="card" style="--accent:#b794f4">
+        <div class="label">🏛️ Contexto SCR</div>
+        <div class="value">${totals.includedCount || 0}</div>
+        <div class="sub">${escapeHtml(fmt(totals.includedMonthlyTotal || 0))}/mês entrou automaticamente.</div>
+        <div class="sub" style="margin-top:6px;color:#d6bcfa">${totals.conflictCount} conflito(s) · ${totals.contextualCount} contextual(is)</div>
       </div>
     </div>`;
 }
@@ -466,4 +583,11 @@ function resolveCommitmentReason(reason) {
   if (reason === 'dismissed') return 'Item já revisado e dispensado antes';
   if (reason === 'matched-account-recurring') return 'Recorrência forte encontrada na conta';
   return 'Evidência ainda insuficiente para entrar no cálculo';
+}
+
+function resolveAutoEstimateAccent(id) {
+  if (id === 'salario') return '#68d391';
+  if (id === 'rendaExtra') return '#76e4f7';
+  if (id === 'itau') return '#fc8181';
+  return '#f6ad55';
 }

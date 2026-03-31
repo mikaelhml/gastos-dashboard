@@ -182,6 +182,11 @@ function detectarSugestoes(lancamentos, extratoTransacoes, dismissals, existingN
     ...(lancamentos || []).map(item => ({ ...item, source: 'cartao' })),
     ...(extratoTransacoes || []).map(item => ({ ...item, source: 'conta' })),
   ];
+  const latestMonth = [...new Set(
+    merged
+      .map(item => String(item?.fatura ?? item?.mes ?? '').trim())
+      .filter(Boolean),
+  )].sort((a, b) => sortMonthLabel(a) - sortMonthLabel(b)).at(-1) || '';
   const groups = new Map();
 
   merged.forEach(item => {
@@ -239,6 +244,7 @@ function detectarSugestoes(lancamentos, extratoTransacoes, dismissals, existingN
       };
     })
     .filter(group => group.months.length >= 2)
+    .filter(group => !latestMonth || group.months.includes(latestMonth))
     .sort((a, b) => {
       if (b.months.length !== a.months.length) return b.months.length - a.months.length;
       return b.valor - a.valor;
@@ -421,3 +427,7 @@ function setFeedback(elementId, message, type) {
     }, 3500);
   }
 }
+
+export const __test__ = {
+  detectarSugestoes,
+};

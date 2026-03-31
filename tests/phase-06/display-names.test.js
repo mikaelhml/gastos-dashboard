@@ -25,3 +25,17 @@ test('buildDisplayNameMeta prefers persisted alias when one exists for the merch
   const meta = buildDisplayNameMeta('COMPRA CREDITO MERCADO LIVRE AUT 9988776655', { aliases });
   assert.equal(meta.friendly, 'Mercado Livre');
 });
+
+test('buildDisplayNameMeta formats pix transactions with direction and counterparty', () => {
+  const meta = buildDisplayNameMeta('Transferência enviada pelo Pix Claro - 40.432.544/0001-47 - CLARO PAY', {
+    transactionContext: { channel: 'pix', direction: 'saida' },
+  });
+  assert.equal(meta.friendly, 'Pix Enviado Claro Pay');
+});
+
+test('buildDisplayNameMeta formats boleto transactions with receiver label', () => {
+  const meta = buildDisplayNameMeta('Pagamento de boleto efetuado AABR', {
+    transactionContext: { channel: 'boleto', direction: 'saida' },
+  });
+  assert.equal(meta.friendly, 'Boleto Aabr');
+});

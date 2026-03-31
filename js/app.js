@@ -192,6 +192,23 @@ function normalizeRegistratoEntry(item) {
   });
 }
 
+function buildProjectionRecurringItems(despesasFixas = [], assinaturas = []) {
+  const manualFixas = (despesasFixas || []).map(item => ({ ...item }));
+  const subscriptions = (assinaturas || [])
+    .map(item => ({
+      id: `assinatura:${item?.id ?? item?.nome ?? ''}`,
+      desc: String(item?.nome ?? '').trim(),
+      nome: String(item?.nome ?? '').trim(),
+      cat: String(item?.cat ?? 'Assinaturas').trim() || 'Assinaturas',
+      valor: Number(item?.valor || 0),
+      recorrencia: 'fixa',
+      source: 'assinatura',
+    }))
+    .filter(item => item.desc && Number.isFinite(item.valor) && item.valor > 0);
+
+  return [...manualFixas, ...subscriptions];
+}
+
 async function renderDashboard() {
   const {
     assinaturas,
@@ -247,6 +264,7 @@ async function renderDashboard() {
     [...new Set(lancamentos.map(item => item?.fatura || item?.mes).filter(Boolean))],
     'lancamentos',
   );
+  const projectionRecurringItems = buildProjectionRecurringItems(despesasFixas, assinaturas);
 
   buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, extratoTransacoes, lancamentos, registratoInsights, cardBillSummaries);
   buildAssinaturas(assinaturas, observacoes, lancamentos, extratoTransacoes, assinaturaSugestoesDispensa, transactionAliases);
@@ -310,13 +328,17 @@ async function renderRegistratoSurfaces() {
     despesasFixas,
     lancamentos,
   });
+  const projectionRecurringItems = buildProjectionRecurringItems(despesasFixas, assinaturas);
 
   buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, extratoTransacoes, lancamentos, registratoInsights, cardBillSummaries);
   buildDespesasFixas(despesasFixas, registratoSuggestions, transactionAliases);
   buildParcelamentos(despesasFixas, lancamentos, transactionAliases);
-  initProjecao(despesasFixas, extratoSummary, registratoInsights, {
+  initProjecao(projectionRecurringItems, extratoSummary, registratoInsights, {
     scrProjectionModel,
     parcelamentoSummary,
+    extratoTransacoes,
+    lancamentos,
+    cardBillSummaries,
   });
   buildRegistrato(registratoResumos, registratoSnapshots, registratoSuggestions, registratoInsights);
 }

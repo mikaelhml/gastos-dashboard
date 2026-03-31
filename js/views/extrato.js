@@ -330,7 +330,14 @@ function renderExtrato(data) {
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#718096;padding:20px">Nenhuma movimentação importada.</td></tr>';
   } else {
     data.forEach((t, i) => {
-      const displayName = buildDisplayNameMeta(t.desc, { maxLength: t.contextoDerivado ? 54 : 42, aliases: _transactionAliasLookup });
+      const displayName = buildDisplayNameMeta(t.desc, {
+        maxLength: t.contextoDerivado ? 54 : 42,
+        aliases: _transactionAliasLookup,
+        transactionContext: {
+          channel: t.canal || inferirCanal(t),
+          direction: t.tipo === 'entrada' ? 'entrada' : 'saida',
+        },
+      });
       if (t.contextoDerivado) {
         const resumo = t.registratoResumo || {};
         const detalhamento = resumo.semRegistros

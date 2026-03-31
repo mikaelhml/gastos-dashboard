@@ -25,6 +25,8 @@ let _categorizationRules = [];
 let _categorizationMemories = [];
 let _firstRunLancamentosModel = null;
 let _transactionAliasLookup = new Map();
+let _selectedLancamentoIds = new Set();
+let _activeLancamentoId = null;
 const ANALYTICS_COLORS = ['#fc8181', '#63b3ed', '#68d391', '#f6e05e', '#b794f4', '#f6ad55', '#76e4f7', '#fbb6ce', '#90cdf4', '#a0aec0'];
 
 function parseDataTs(data) {
@@ -75,6 +77,8 @@ export function initLancamentos(lancamentos, extratoTransacoes = [], _assinatura
 
   // Mescla e ordena por data decrescente
   _lancamentos = [...cartaoNorm, ...extratoNorm, ...contextRows].sort((a, b) => parseDataTs(b.data) - parseDataTs(a.data));
+  _selectedLancamentoIds = new Set();
+  _activeLancamentoId = _lancamentos.find(item => !item.contextoDerivado)?.id ?? null;
 
   toggleLancamentosSections(!_firstRunLancamentosModel);
   renderLancamentosEmptyState(_firstRunLancamentosModel);
@@ -86,6 +90,8 @@ export function initLancamentos(lancamentos, extratoTransacoes = [], _assinatura
     }
     const count = document.getElementById('lancamentosCount');
     if (count) count.innerHTML = '';
+    renderLancamentosBulkBar([]);
+    renderLancamentoDetailPanel(null);
     return;
   }
 
@@ -123,6 +129,8 @@ function toggleLancamentosSections(visible) {
     'lancamentosContextPanel',
     'lancamentosCategorizationPanel',
     'lancamentosFilters',
+    'lancamentosBulkBar',
+    'lancamentosDetailPanel',
     'lancamentosTableWrap',
     'lancamentosCount',
   ].forEach(id => {
@@ -258,7 +266,7 @@ function renderLancamentos(data) {
   if (data.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="7">
+        <td colspan="8">
           <div class="empty-state">
             <strong>Nenhum lançamento encontrado</strong>
             Ajuste os filtros ou importe uma fatura para preencher esta aba.
@@ -290,6 +298,10 @@ function renderLancamentos(data) {
       maxLength: isContexto ? 56 : 44,
       stripInstallmentSuffix: isParc && !isContexto,
       aliases: _transactionAliasLookup,
+      transactionContext: {
+        channel: l.canal || inferirCanal(l),
+        direction: isEntrada ? 'entrada' : 'saida',
+      },
     });
     const descHtml = `
       <span class="display-name display-name--table" title="${escapeHtml(displayName.raw)}">${escapeHtml(displayName.short)}</span>
@@ -306,16 +318,15 @@ function renderLancamentos(data) {
     // Saídas da conta também são classificáveis (despesa, assinatura etc.)
     const canClassify = !isContexto && (!isConta || l.tipo === 'saida');
 
-    const classifyHtml = isClassificado
-      ? buildTipoBadge(l)
-      : canClassify
-        ? `<div class="cell-actions">
-            <button type="button" class="btn-inline-secondary" data-lancamento-action="assinatura" data-lancamento-id="${l.id ?? ''}">Assinatura</button>
-            <button type="button" class="btn-inline-secondary" data-lancamento-action="despesa" data-lancamento-id="${l.id ?? ''}">Despesa</button>
-            <button type="button" class="btn-inline-secondary" data-lancamento-action="despesa_variavel" data-lancamento-id="${l.id ?? ''}">Variavel</button>
-            <button type="button" class="btn-inline-secondary" data-lancamento-action="parcelamento" data-lancamento-id="${l.id ?? ''}">Parcelamento</button>
-            <button type="button" class="btn-inline-secondary" data-lancamento-action="financiamento" data-lancamento-id="${l.id ?? ''}">Financiamento</button>
-          </div>`
+    const classifyHtml = canClassify
+      ? `<div class="cell-actions">
+          ${isClassificado ? buildTipoBadge(l) : ''}
+          <button type="button" class="btn-inline-secondary" data-open-convert-id="${l.id ?? ''}">
+            ${isClassificado ? 'Reclassificar' : 'Classificar'}
+          </button>
+        </div>`
+      : isClassificado
+        ? buildTipoBadge(l)
         : '';
 
     const acoesHtml = isContexto ? '' : `
@@ -338,8 +349,13 @@ function renderLancamentos(data) {
         )}</div>`
       : descHtml;
 
+    const isSelected = _selectedLancamentoIds.has(String(l.id));
+    const isActive = String(_activeLancamentoId) === String(l.id);
     tbody.innerHTML += `
-      <tr class="${isParc ? 'row-parcela' : ''}${isClassificado ? ' row-classificado' : ''}${isConta ? ' row-conta' : ''}${isContexto ? ' row-contexto-scr' : ''}">
+      <tr class="lancamentos-row ${isParc ? 'row-parcela' : ''}${isClassificado ? ' row-classificado' : ''}${isConta ? ' row-conta' : ''}${isContexto ? ' row-contexto-scr' : ''}${isSelected ? ' is-selected' : ''}${isActive ? ' is-active' : ''}" data-row-lancamento-id="${l.id ?? ''}">
+        <td data-label="Sel." style="text-align:center">
+          ${!isContexto ? `<input type="checkbox" class="lancamentos-row-select" data-select-lancamento-id="${l.id ?? ''}" ${isSelected ? 'checked' : ''} aria-label="Selecionar lançamento">` : ''}
+        </td>
         <td data-label="#" style="color:#718096">${i + 1}</td>
         <td data-label="Data">${escapeHtml(l.data)}</td>
         <td data-label="Fatura/Mês"><span class="badge badge-blue">${escapeHtml(l.fatura)}</span>${origemBadge}</td>
@@ -364,8 +380,168 @@ function renderLancamentos(data) {
     `${nParc ? ` &nbsp;·&nbsp; 📦 ${nParc} parcelados` : ''}` +
     `${nClass ? ` &nbsp;·&nbsp; ${nClass} classificados` : ''}`;
 
+  bindLancamentoRowInteractions(data);
+  renderLancamentosBulkBar(data);
+  renderLancamentoDetailPanel(_lancamentos.find(item => String(item.id) === String(_activeLancamentoId)) || null);
   bindActionButtons();
   bindEditDeleteButtons();
+}
+
+function bindLancamentoRowInteractions(data) {
+  document.querySelectorAll('[data-select-lancamento-id]').forEach(input => {
+    input.addEventListener('click', event => event.stopPropagation());
+    input.addEventListener('change', event => {
+      const rawId = input.getAttribute('data-select-lancamento-id');
+      if (!rawId) return;
+      if (input.checked) _selectedLancamentoIds.add(String(rawId));
+      else _selectedLancamentoIds.delete(String(rawId));
+      renderLancamentosBulkBar(data);
+      renderLancamentos(getSortedLancamentos(data));
+    });
+  });
+
+  document.querySelectorAll('[data-row-lancamento-id]').forEach(row => {
+    row.addEventListener('click', event => {
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.closest('button') || target.closest('input') || target.closest('select'))) {
+        return;
+      }
+      const rawId = row.getAttribute('data-row-lancamento-id');
+      if (!rawId) return;
+      _activeLancamentoId = rawId;
+      renderLancamentos(getSortedLancamentos(data));
+    });
+  });
+}
+
+function renderLancamentosBulkBar(data) {
+  const panel = document.getElementById('lancamentosBulkBar');
+  const summary = document.getElementById('lancamentosBulkSummary');
+  const selectAll = document.getElementById('selectAllLancamentos');
+  const selectVisibleBtn = document.getElementById('selectVisibleLancamentosBtn');
+  const clearBtn = document.getElementById('clearSelectedLancamentosBtn');
+  const deleteBtn = document.getElementById('deleteSelectedLancamentosBtn');
+  if (!panel || !summary) return;
+
+  const visibleIds = data.filter(item => !item.contextoDerivado).map(item => String(item.id));
+  const selectedVisible = visibleIds.filter(id => _selectedLancamentoIds.has(id));
+  const count = selectedVisible.length;
+
+  panel.style.display = visibleIds.length ? '' : 'none';
+  summary.textContent = count
+    ? `${count} lançamento(s) selecionado(s)`
+    : 'Nenhum lançamento selecionado';
+
+  if (selectAll) {
+    selectAll.checked = count > 0 && count === visibleIds.length;
+    selectAll.indeterminate = count > 0 && count < visibleIds.length;
+    selectAll.onchange = () => {
+      if (selectAll.checked) visibleIds.forEach(id => _selectedLancamentoIds.add(id));
+      else visibleIds.forEach(id => _selectedLancamentoIds.delete(id));
+      renderLancamentos(getSortedLancamentos(data));
+    };
+  }
+
+  if (selectVisibleBtn) {
+    selectVisibleBtn.onclick = () => {
+      visibleIds.forEach(id => _selectedLancamentoIds.add(id));
+      renderLancamentos(getSortedLancamentos(data));
+    };
+  }
+
+  if (clearBtn) {
+    clearBtn.onclick = () => {
+      visibleIds.forEach(id => _selectedLancamentoIds.delete(id));
+      renderLancamentos(getSortedLancamentos(data));
+    };
+  }
+
+  if (deleteBtn) {
+    deleteBtn.disabled = count === 0;
+    deleteBtn.onclick = async () => {
+      if (!count) return;
+      if (!confirm(`Excluir ${count} lançamento(s) selecionado(s)?`)) return;
+      const selectedRows = _lancamentos.filter(item => selectedVisible.includes(String(item.id)));
+      for (const item of selectedRows) {
+        await deleteItem(getStore(item), prepareForDb(item).id ?? item._origId ?? item.id);
+      }
+      _lancamentos = _lancamentos.filter(item => !selectedVisible.includes(String(item.id)));
+      selectedVisible.forEach(id => _selectedLancamentoIds.delete(id));
+      if (_activeLancamentoId && !_lancamentos.some(item => String(item.id) === String(_activeLancamentoId))) {
+        _activeLancamentoId = _lancamentos.find(item => !item.contextoDerivado)?.id ?? null;
+      }
+      setFeedback(`${count} lançamento(s) excluído(s).`, 'success');
+      renderLancamentos(getSortedLancamentos(_lancamentos));
+      await window.refreshDashboard?.({ defer: true });
+    };
+  }
+}
+
+function renderLancamentoDetailPanel(lancamento) {
+  const panel = document.getElementById('lancamentosDetailPanel');
+  if (!panel) return;
+
+  if (!lancamento || lancamento.contextoDerivado) {
+    panel.style.display = 'none';
+    panel.innerHTML = '';
+    return;
+  }
+
+  const canal = getCanalMeta(lancamento.canal || inferirCanal(lancamento));
+  const displayName = buildDisplayNameMeta(lancamento.desc, {
+    maxLength: 56,
+    aliases: _transactionAliasLookup,
+    transactionContext: {
+      channel: lancamento.canal || inferirCanal(lancamento),
+      direction: lancamento.source === 'conta' && lancamento.tipo === 'entrada' ? 'entrada' : 'saida',
+    },
+  });
+
+  panel.style.display = '';
+  panel.innerHTML = `
+    <div>
+      <div class="lancamentos-detail-title">${escapeHtml(displayName.friendly)}</div>
+      <div class="lancamentos-detail-subtitle">${escapeHtml(lancamento.data || '')} · ${escapeHtml(lancamento.fatura || '')} · ${escapeHtml(canal.icon)} ${escapeHtml(canal.label)}</div>
+      <div class="lancamentos-detail-grid">
+        <div class="lancamentos-detail-item">
+          <span class="lancamentos-detail-label">Descrição original</span>
+          <div class="lancamentos-detail-value">${escapeHtml(lancamento.desc || '—')}</div>
+        </div>
+        <div class="lancamentos-detail-item">
+          <span class="lancamentos-detail-label">Categoria</span>
+          <div class="lancamentos-detail-value">${escapeHtml(lancamento.cat || '—')}</div>
+        </div>
+        <div class="lancamentos-detail-item">
+          <span class="lancamentos-detail-label">Valor</span>
+          <div class="lancamentos-detail-value">${escapeHtml(fmt(lancamento.valor || 0))}</div>
+        </div>
+        <div class="lancamentos-detail-item">
+          <span class="lancamentos-detail-label">Classificação</span>
+          <div class="lancamentos-detail-value">${escapeHtml(lancamento.tipo_classificado || 'Não classificado')}</div>
+        </div>
+      </div>
+    </div>
+    <div class="lancamentos-detail-actions">
+      <button type="button" class="btn-primary" id="detailClassifyLancamentoBtn">${lancamento.tipo_classificado ? 'Reclassificar' : 'Classificar'}</button>
+      <button type="button" class="btn-inline-secondary" id="detailEditLancamentoBtn">Editar lançamento</button>
+      <button type="button" class="btn-inline-danger" id="detailDeleteLancamentoBtn">Excluir lançamento</button>
+    </div>`;
+
+  document.getElementById('detailClassifyLancamentoBtn')?.addEventListener('click', () => {
+    openConvertDialog(lancamento, lancamento.tipo_classificado || inferSuggestedAction(lancamento));
+  });
+  document.getElementById('detailEditLancamentoBtn')?.addEventListener('click', () => {
+    openEditDialog(lancamento);
+  });
+  document.getElementById('detailDeleteLancamentoBtn')?.addEventListener('click', async () => {
+    if (!confirm(`Excluir lançamento "${lancamento.desc}"?`)) return;
+    await deleteItem(getStore(lancamento), prepareForDb(lancamento).id ?? lancamento._origId ?? lancamento.id);
+    _lancamentos = _lancamentos.filter(item => String(item.id) !== String(lancamento.id));
+    _selectedLancamentoIds.delete(String(lancamento.id));
+    _activeLancamentoId = _lancamentos.find(item => !item.contextoDerivado)?.id ?? null;
+    renderLancamentos(getSortedLancamentos(_lancamentos));
+    await window.refreshDashboard?.({ defer: true });
+  });
 }
 
 export function filterLancamentos() {
@@ -1100,13 +1276,12 @@ function renderAnalyticsChart(analytics) {
 }
 
 function bindActionButtons() {
-  document.querySelectorAll('[data-lancamento-action]').forEach(button => {
+  document.querySelectorAll('[data-open-convert-id]').forEach(button => {
     button.onclick = () => {
-      const action = button.getAttribute('data-lancamento-action');
-      const rawId  = button.getAttribute('data-lancamento-id');
+      const rawId  = button.getAttribute('data-open-convert-id');
       const lancamento = _lancamentos.find(item => String(item.id) === String(rawId));
       if (!lancamento) return;
-      openConvertDialog(lancamento, action);
+      openConvertDialog(lancamento, lancamento.tipo_classificado || inferSuggestedAction(lancamento));
     };
   });
 }
@@ -1120,12 +1295,18 @@ function bindConvertDialog() {
   const cancelTop = document.getElementById('lancamentoConvertCancelTop');
   const cancelBtn = document.getElementById('lancamentoConvertCancel');
   const submitBtn = document.getElementById('lancamentoConvertSubmit');
+  const actionSelect = document.getElementById('convertActionSelect');
   if (!dialog || !form) return;
 
   const close = () => { dialog.close(); setFeedback('', '', 'lancamentoConvertFeedback'); };
   cancelTop?.addEventListener('click', close);
   cancelBtn?.addEventListener('click', close);
   dialog.addEventListener('click', e => { if (e.target === dialog) close(); });
+  actionSelect?.addEventListener('change', () => {
+    const action = actionSelect.value || 'despesa';
+    document.getElementById('convertAction').value = action;
+    syncConvertDialogState(action);
+  });
 
   form.addEventListener('submit', async e => {
     e.preventDefault();
@@ -1234,24 +1415,18 @@ function openConvertDialog(lancamento, action) {
 
   document.getElementById('convertLancamentoId').value = lancamento.id ?? '';
   document.getElementById('convertAction').value = action;
+  const actionSelect = document.getElementById('convertActionSelect');
+  if (actionSelect) actionSelect.value = action;
   document.getElementById('convertDescricao').value = lancamento.desc || '';
   document.getElementById('convertCategoria').value = lancamento.cat || '';
   document.getElementById('convertValor').value = (lancamento.valor ?? '').toString();
   document.getElementById('convertObs').value = buildObsBase(lancamento);
 
   const [parcelaAtual, parcelaTotal] = extrairParcelaPadrao(lancamento.parcela, action);
-  document.getElementById('convertPagas').value = action === 'assinatura' ? '' : parcelaAtual;
-  document.getElementById('convertTotal').value = action === 'assinatura' ? '' : parcelaTotal;
-  document.getElementById('convertInicio').value = action === 'assinatura' ? '' : inferirInicioParcelamento(lancamento.data, parcelaAtual);
-
-  const isParcelado = action === 'parcelamento' || action === 'financiamento';
-  document.querySelectorAll('.convert-parcelado-field').forEach(el => {
-    el.style.display = isParcelado ? '' : 'none';
-  });
-  const obsField = document.getElementById('convertObsField');
-  if (obsField) obsField.style.display = action === 'assinatura' ? 'none' : '';
-  const iconField = document.getElementById('convertIconField');
-  if (iconField) iconField.style.display = action === 'despesa' || action === 'despesa_variavel' || action === 'assinatura' ? '' : 'none';
+  document.getElementById('convertPagas').value = parcelaAtual;
+  document.getElementById('convertTotal').value = parcelaTotal;
+  document.getElementById('convertInicio').value = inferirInicioParcelamento(lancamento.data, parcelaAtual);
+  syncConvertDialogState(action);
 
   if (titleEl)   titleEl.textContent = getDialogTitle(action);
   if (submitBtn) submitBtn.textContent = getDialogSubmitLabel(action);
@@ -1420,6 +1595,28 @@ function getDialogSubmitLabel(action) {
   if (action === 'despesa_variavel') return 'Salvar despesa variavel';
   if (action === 'parcelamento') return 'Salvar parcelamento';
   return 'Salvar financiamento';
+}
+
+function syncConvertDialogState(action) {
+  const isParcelado = action === 'parcelamento' || action === 'financiamento';
+  document.querySelectorAll('.convert-parcelado-field').forEach(el => {
+    el.style.display = isParcelado ? '' : 'none';
+  });
+  const obsField = document.getElementById('convertObsField');
+  if (obsField) obsField.style.display = action === 'assinatura' ? 'none' : '';
+  const iconField = document.getElementById('convertIconField');
+  if (iconField) iconField.style.display = action === 'despesa' || action === 'despesa_variavel' || action === 'assinatura' ? '' : 'none';
+
+  const titleEl = document.getElementById('lancamentoConvertTitle');
+  const submitBtn = document.getElementById('lancamentoConvertSubmit');
+  if (titleEl) titleEl.textContent = getDialogTitle(action);
+  if (submitBtn) submitBtn.textContent = getDialogSubmitLabel(action);
+}
+
+function inferSuggestedAction(lancamento) {
+  if (lancamento?.parcela) return 'parcelamento';
+  if (String(lancamento?.cat || '').trim() === 'Streaming') return 'assinatura';
+  return 'despesa';
 }
 
 function buildObsBase(lancamento) {

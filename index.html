@@ -36,6 +36,7 @@
 <nav id="mobileTabNav" class="mobile-tab-nav" aria-label="Navegação rápida">
   <select id="mobileTabSelect" aria-label="Navegar entre abas" onchange="switchTab(event, this.value)">
     <option value="visao">📊 Visão Geral</option>
+    <option value="analise">🧠 Análise</option>
     <option value="assinaturas">🔁 Assinaturas</option>
     <option value="despesas">📋 Despesas &amp; Parcelas</option>
     <option value="lancamentos">🧾 Lançamentos</option>
@@ -49,6 +50,7 @@
 
 <div class="tabs" role="tablist" aria-label="Navegação principal do dashboard">
   <button type="button" id="tab-button-visao" class="tab active" role="tab" aria-selected="true" aria-controls="tab-visao" onclick="switchTab(event, 'visao')">📊 Visão Geral</button>
+  <button type="button" id="tab-button-analise" class="tab" role="tab" aria-selected="false" aria-controls="tab-analise" onclick="switchTab(event, 'analise')">🧠 Análise</button>
   <button type="button" id="tab-button-assinaturas" class="tab" role="tab" aria-selected="false" aria-controls="tab-assinaturas" onclick="switchTab(event, 'assinaturas')">🔁 Assinaturas</button>
   <button type="button" id="tab-button-despesas" class="tab" role="tab" aria-selected="false" aria-controls="tab-despesas" onclick="switchTab(event, 'despesas')">📋 Despesas & Parcelas</button>
   <button type="button" id="tab-button-lancamentos" class="tab" role="tab" aria-selected="false" aria-controls="tab-lancamentos" onclick="switchTab(event, 'lancamentos')">🧾 Lançamentos</button>
@@ -116,6 +118,8 @@
     </div>
   </div>
 
+  <div id="financialOverviewPanel" class="helper-panel" style="margin-bottom:24px;display:none"></div>
+
   <div class="info-panel info-panel-primary">
     <div class="info-panel-title">ℹ️ Dashboard pronto para começar do zero</div>
     <div class="info-panel-body">
@@ -164,6 +168,12 @@
       <tbody id="resumoTable"></tbody>
     </table>
   </div>
+</div>
+
+<!-- ── ANÁLISE FINANCEIRA ───────────────────────────────────────────────────── -->
+<div id="tab-analise" class="tab-content" role="tabpanel" aria-labelledby="tab-button-analise">
+  <div class="section-title">🧠 Análise Financeira</div>
+  <div id="analiseFinanceiraRoot"></div>
 </div>
 
 <!-- ── ASSINATURAS ─────────────────────────────────────────────────────────── -->
@@ -761,6 +771,7 @@
       <div id="pResultadoMensal" class="hero-result"></div>
     </div>
   </div>
+  <div id="projecaoAnalysisPanel" class="helper-panel" style="margin-bottom:24px;display:none"></div>
   <div id="projecaoAutoPanel" class="helper-panel" style="margin-bottom:24px"></div>
 
   <div id="projecaoScrPanel" class="helper-panel">

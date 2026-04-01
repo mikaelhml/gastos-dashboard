@@ -7,7 +7,7 @@ import {
   validateFullBackupPayload,
 } from '../../js/utils/full-backup-io.js';
 
-test('normalizeFullBackupStoresForRestore defaults future categorization stores to empty arrays', () => {
+test('normalizeFullBackupStoresForRestore defaults future preference and categorization stores to empty arrays', () => {
   const stores = normalizeFullBackupStoresForRestore(
     {
       assinaturas: [{ id: 1 }],
@@ -17,10 +17,12 @@ test('normalizeFullBackupStoresForRestore defaults future categorization stores 
       requiredStoreNames: [
         'assinaturas',
         'lancamentos',
+        'projecao_parametros',
         'categorizacao_regras',
         'categorizacao_memoria',
       ],
       optionalEmptyStoreNames: [
+        'projecao_parametros',
         'categorizacao_regras',
         'categorizacao_memoria',
       ],
@@ -30,6 +32,7 @@ test('normalizeFullBackupStoresForRestore defaults future categorization stores 
   assert.deepEqual(stores, {
     assinaturas: [{ id: 1 }],
     lancamentos: [{ id: 2 }],
+    projecao_parametros: [],
     categorizacao_regras: [],
     categorizacao_memoria: [],
   });
@@ -47,10 +50,12 @@ test('normalizeFullBackupStoresForRestore still rejects missing legacy stores', 
         requiredStoreNames: [
           'assinaturas',
           'lancamentos',
+          'projecao_parametros',
           'categorizacao_regras',
           'categorizacao_memoria',
         ],
         optionalEmptyStoreNames: [
+          'projecao_parametros',
           'categorizacao_regras',
           'categorizacao_memoria',
         ],
@@ -60,7 +65,7 @@ test('normalizeFullBackupStoresForRestore still rejects missing legacy stores', 
   );
 });
 
-test('validateFullBackupPayload accepts legacy full backups missing only categorization stores', () => {
+test('validateFullBackupPayload accepts legacy full backups missing new preference and categorization stores', () => {
   const payload = validateFullBackupPayload({
     versao: FULL_BACKUP_VERSION,
     tipo: 'gastos-dashboard-full-backup',
@@ -82,6 +87,7 @@ test('validateFullBackupPayload accepts legacy full backups missing only categor
     },
   });
 
+  assert.deepEqual(payload.stores.projecao_parametros, []);
   assert.deepEqual(payload.stores.categorizacao_regras, []);
   assert.deepEqual(payload.stores.categorizacao_memoria, []);
 });

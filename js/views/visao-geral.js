@@ -16,7 +16,7 @@ const CAT_PALETTE = [
 /**
  * Renderiza a aba Visão Geral.
  */
-export function buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, transacoes, lancamentos = [], registratoInsights = null, cardBillSummaries = []) {
+export function buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, transacoes, lancamentos = [], registratoInsights = null, cardBillSummaries = [], options = {}) {
   const totals      = calcTotals(assinaturas, despesasFixas);
   const summaryReal = extratoSummary.filter(m => !m.apenasHistorico);
   const emptyStates = buildEmptyStateViewModels({
@@ -29,6 +29,7 @@ export function buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, tran
   buildTopSummaryCards(totals, despesasFixas, lancamentos, cardBillSummaries);
   buildCharts(assinaturas, despesasFixas);
   buildNewKpiCards(summaryReal, lancamentos, registratoInsights);
+  renderFinancialOverviewPanel(options?.financialAnalysis || null);
   buildRenovacaoAlerta(assinaturas);
 
   if (emptyStates.overview.shouldRender) {
@@ -76,6 +77,73 @@ export function buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, tran
   }
 
   buildResumoTable(totals, assinaturas, despesasFixas);
+}
+
+function renderFinancialOverviewPanel(model) {
+  const host = document.getElementById('financialOverviewPanel');
+  if (!host) return;
+
+  if (!model) {
+    host.innerHTML = '';
+    host.style.display = 'none';
+    return;
+  }
+
+  const cards = (model.summaryCards || []).slice(0, 4);
+  const highlights = model.highlights || [];
+  const bullets = (model.narrative?.bullets || []).slice(0, 3);
+  const status = model.budget?.status || { label: 'Sem base suficiente', tone: 'neutral', note: '' };
+  const accent = resolveAnalysisToneColor(status.tone);
+
+  host.innerHTML = `
+    <div class="helper-panel-header">
+      <div>
+        <h3>🧠 Leitura consolidada dos seus dados</h3>
+        <p>${escapeHtml(model.narrative?.headline || status.note || '')}</p>
+      </div>
+      <span style="display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:${accent};font-size:0.82rem;font-weight:700">${escapeHtml(status.label)}</span>
+    </div>
+    <div class="cards" style="margin-top:12px">
+      ${cards.map(card => `
+        <div class="card" style="--accent:${resolveAnalysisToneColor(card.tone)}">
+          <div class="label">${escapeHtml(card.label || '')}</div>
+          <div class="value" style="color:${resolveAnalysisToneColor(card.tone)}">${escapeHtml(fmt(card.value || 0))}</div>
+          <div class="sub">${escapeHtml(card.sub || '')}</div>
+        </div>
+      `).join('')}
+    </div>
+    ${highlights.length ? `
+      <div class="surface-panel" style="margin-top:16px">
+        <div class="info-panel-title">Sinais principais</div>
+        <div style="display:grid;gap:10px;margin-top:12px">
+          ${highlights.map(item => `
+            <div style="padding:12px 14px;border-radius:14px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06)">
+              <div style="font-weight:700;color:${resolveAnalysisToneColor(item.tone)};margin-bottom:6px">${escapeHtml(item.title || '')}</div>
+              <div style="color:#cbd5e0">${escapeHtml(item.message || '')}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : ''}
+    ${bullets.length ? `
+      <div class="info-panel" style="margin-top:16px;margin-bottom:0">
+        <div class="info-panel-title">Como isso conversa com o restante do dashboard</div>
+        <div class="info-panel-body">
+          <ul style="margin:10px 0 0 18px;padding:0;display:grid;gap:6px">
+            ${bullets.map(item => `<li>${escapeHtml(item)}</li>`).join('')}
+          </ul>
+        </div>
+      </div>
+    ` : ''}`;
+  host.style.display = '';
+}
+
+function resolveAnalysisToneColor(tone) {
+  if (tone === 'healthy') return '#68d391';
+  if (tone === 'critical') return '#fc8181';
+  if (tone === 'attention') return '#f6ad55';
+  if (tone === 'info') return '#76e4f7';
+  return '#a0aec0';
 }
 
 function destroyOverviewHistoryCharts() {

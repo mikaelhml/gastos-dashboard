@@ -96,7 +96,7 @@ Depois acesse:
 
 ## Importar e exportar configuracao
 
-- `📤 Exportar configuração (JSON)` salva assinaturas e despesas fixas atuais
+- `📤 Exportar configuração (JSON)` salva assinaturas, despesas fixas e os parâmetros salvos da projeção
 - `📥 Importar configuração (JSON)` restaura ou migra essas configuracoes
 - a importacao permite substituir ou mesclar os dados
 

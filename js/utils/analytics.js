@@ -85,6 +85,12 @@ export function aggregateMonthlyCategoryTotals(input = {}) {
   }
 
   const categories = Object.keys(categoryTotals).sort((left, right) => categoryTotals[right] - categoryTotals[left]);
+  const monthTotals = Object.fromEntries(
+    months.map(month => [
+      month,
+      roundMoney(Object.values(totalsByMonth[month] || {}).reduce((sum, value) => sum + value, 0)),
+    ]),
+  );
   const totalSpend = roundMoney(Object.values(categoryTotals).reduce((sum, value) => sum + value, 0));
   const outrosTotal = roundMoney(categoryTotals.Outros || 0);
   const outrosShare = totalSpend > 0 ? Number((outrosTotal / totalSpend).toFixed(4)) : 0;
@@ -95,6 +101,7 @@ export function aggregateMonthlyCategoryTotals(input = {}) {
     categories,
     totalsByMonth,
     categoryTotals,
+    monthTotals,
     totalSpend,
     quality: {
       outrosTotal,
@@ -183,6 +190,8 @@ export function buildSpendAnalytics({ lancamentos = [], extratoTransacoes = [] }
     months: aggregated.months,
     categories: aggregated.categories,
     totalsByMonth: aggregated.totalsByMonth,
+    categoryTotals: aggregated.categoryTotals,
+    monthTotals: aggregated.monthTotals,
     trendDatasets,
     latestMonth: currentMonth,
     previousMonth,

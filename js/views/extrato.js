@@ -44,7 +44,12 @@ export function initExtrato(transacoes, extratoSummary, context = {}) {
   buildExtratoSummaryBar(transacoesConta, summaryReal);
   buildExtratoCharts(transacoesConta, summaryReal);
   buildExtratoFixosTable(transacoesConta, summaryReal);
-  buildExtratoContextPanel(context.cardBillSummaries || [], context.registratoInsights || null, contextRows);
+  buildExtratoContextPanel(
+    context.cardBillSummaries || [],
+    context.registratoInsights || null,
+    contextRows,
+    context.financialAnalysis || null,
+  );
   renderExtrato(_transacoes);
 }
 
@@ -427,15 +432,40 @@ function renderExtrato(data) {
     `<span style="color:${totalE - totalS >= 0 ? '#68d391' : '#fc8181'}">◆ Líquido: ${totalE - totalS >= 0 ? '+' : '-'}${fmt(Math.abs(totalE - totalS))}</span>`;
 }
 
-function buildExtratoContextPanel(cardBillSummaries, registratoInsights, contextRows) {
+export function buildExtratoContextSummaryViewModel(financialAnalysis = null) {
+  const budget = financialAnalysis?.budget || {};
+  const cashflow = financialAnalysis?.cashflow || {};
+  const debt = financialAnalysis?.debt || {};
+  const latest = cashflow?.latest || null;
+
+  return {
+    shouldRender: Boolean(latest || budget?.status?.label || debt?.totalExposure > 0 || cashflow?.currentBalance || cashflow?.averageNet),
+    statusLabel: budget?.status?.label || '',
+    pressureRatio: Math.round(Number(budget?.pressureRatio || 0) * 100),
+    freeBudgetEstimate: formatSignedCurrency(budget?.freeBudgetEstimate || 0),
+    freeBudgetColor: resolveToneColor((budget?.freeBudgetEstimate || 0) >= 0 ? 'healthy' : 'critical'),
+    currentBalance: fmt(cashflow?.currentBalance || 0),
+    currentBalanceColor: resolveToneColor((cashflow?.currentBalance || 0) >= 0 ? 'healthy' : 'critical'),
+    latestMonthLabel: latest?.mes || '',
+    latestMonthNet: formatSignedCurrency(latest?.variacao || 0),
+    latestMonthNetColor: resolveDeltaColor(latest?.variacao || 0),
+    averageNet: formatSignedCurrency(cashflow?.averageNet || 0),
+    averageNetColor: resolveDeltaColor(cashflow?.averageNet || 0),
+    debtExposure: debt?.totalExposure > 0 ? fmt(debt.totalExposure) : '',
+    debtIncluded: debt?.includedProjection > 0 ? fmt(debt.includedProjection) : '',
+  };
+}
+
+function buildExtratoContextPanel(cardBillSummaries, registratoInsights, contextRows, financialAnalysis = null) {
   const panel = document.getElementById('extratoContextPanel');
   if (!panel) return;
 
   const ultimaFatura = cardBillSummaries[0] || null;
   const totalCartao = cardBillSummaries.reduce((sum, item) => sum + Number(item.total || 0), 0);
   const linhasScr = contextRows.length;
+  const sharedSummary = buildExtratoContextSummaryViewModel(financialAnalysis);
 
-  if (!ultimaFatura && !registratoInsights && !linhasScr) {
+  if (!ultimaFatura && !registratoInsights && !linhasScr && !sharedSummary.shouldRender) {
     panel.style.display = 'none';
     panel.innerHTML = '';
     return;
@@ -454,6 +484,67 @@ function buildExtratoContextPanel(cardBillSummaries, registratoInsights, context
       ${Number(totalCartao) > 0 ? `<span class="badge badge-blue">🧾 Total importado em cartão · ${escapeHtml(fmt(totalCartao))}</span>` : ''}
       ${linhasScr ? `<span class="badge badge-purple">🔎 ${linhasScr} linha(s) derivada(s) do SCR no período do extrato</span>` : ''}
     </div>
+    ${renderExtratoSharedSummary(sharedSummary)}
+  `;
+}
+
+function renderExtratoSharedSummary(viewModel) {
+  if (!viewModel?.shouldRender) return '';
+
+  return `
+    <div class="split-panel" style="margin-top:16px">
+      <div class="surface-panel">
+        <div class="info-panel-title">Leitura rápida de caixa</div>
+        <div class="analysis-list" style="margin-top:14px">
+          <div class="analysis-list-item">
+            <div class="analysis-list-top">
+              <strong>Saldo atual</strong>
+              <span style="color:${viewModel.currentBalanceColor}">${escapeHtml(viewModel.currentBalance)}</span>
+            </div>
+            <div class="analysis-list-note">Saldo final consolidado do último mês importado.</div>
+          </div>
+          <div class="analysis-list-item">
+            <div class="analysis-list-top">
+              <strong>${escapeHtml(viewModel.statusLabel || 'Saldo livre estimado')}</strong>
+              <span style="color:${viewModel.freeBudgetColor}">${escapeHtml(viewModel.freeBudgetEstimate)}</span>
+            </div>
+            <div class="analysis-list-note">Pressão orçamentária atual em torno de ${escapeHtml(String(viewModel.pressureRatio))}% da renda estimada.</div>
+          </div>
+          <div class="analysis-list-item">
+            <div class="analysis-list-top">
+              <strong>${escapeHtml(viewModel.latestMonthLabel || 'Fluxo recente')}</strong>
+              <span style="color:${viewModel.latestMonthNetColor}">${escapeHtml(viewModel.latestMonthNet)}</span>
+            </div>
+            <div class="analysis-list-note">Média líquida recente ${escapeHtml(viewModel.averageNet)}.</div>
+          </div>
+        </div>
+      </div>
+      ${viewModel.debtExposure || viewModel.debtIncluded ? `
+        <div class="surface-panel">
+          <div class="info-panel-title">SCR refletido no caixa</div>
+          <div class="analysis-list" style="margin-top:14px">
+            ${viewModel.debtIncluded ? `
+              <div class="analysis-list-item">
+                <div class="analysis-list-top">
+                  <strong>Compromissos SCR incluídos</strong>
+                  <span>${escapeHtml(viewModel.debtIncluded)}</span>
+                </div>
+                <div class="analysis-list-note">Já entram na leitura de orçamento que acompanha este extrato.</div>
+              </div>
+            ` : ''}
+            ${viewModel.debtExposure ? `
+              <div class="analysis-list-item">
+                <div class="analysis-list-top">
+                  <strong>Exposição total SCR</strong>
+                  <span>${escapeHtml(viewModel.debtExposure)}</span>
+                </div>
+                <div class="analysis-list-note">Serve de contexto para interpretar pressão de caixa e crédito disponível.</div>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      ` : ''}
+    </div>
   `;
 }
 
@@ -466,6 +557,23 @@ function parseExtratoDateTs(data) {
   if (parts.length !== 3) return 0;
   const [dd, mm, yyyy] = parts;
   return new Date(yyyy, mm - 1, dd).getTime();
+}
+
+function formatSignedCurrency(value) {
+  const amount = Number(value || 0);
+  return amount > 0 ? `+${fmt(amount)}` : fmt(amount);
+}
+
+function resolveToneColor(tone) {
+  if (tone === 'healthy') return '#68d391';
+  if (tone === 'critical') return '#fc8181';
+  if (tone === 'attention') return '#f6ad55';
+  if (tone === 'info') return '#76e4f7';
+  return '#a0aec0';
+}
+
+function resolveDeltaColor(value) {
+  return Number(value || 0) >= 0 ? '#68d391' : '#fc8181';
 }
 
 export function filterExtrato() {

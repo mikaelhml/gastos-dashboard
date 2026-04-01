@@ -10,10 +10,11 @@
  *   extrato_transacoes keyPath: id (auto)
  *   extrato_summary   keyPath: mes (string único por mês)
  *   pdfs_importados   keyPath: hash
+ *   projecao_parametros keyPath: key (singleton)
  */
 
 export const DB_NAME = 'gastos_db_public';
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 
 const STORE_DEFS = [
   { name: 'assinaturas',          keyPath: 'id',   autoIncrement: true  },
@@ -24,6 +25,7 @@ const STORE_DEFS = [
   { name: 'extrato_summary',      keyPath: 'mes',  autoIncrement: false },
   { name: 'pdfs_importados',      keyPath: 'hash', autoIncrement: false },
   { name: 'orcamentos',           keyPath: 'cat',  autoIncrement: false },
+  { name: 'projecao_parametros',  keyPath: 'key',  autoIncrement: false },
   { name: 'assinatura_sugestoes_dispensa', keyPath: 'key', autoIncrement: false },
   { name: 'categorizacao_regras', keyPath: 'id', autoIncrement: true },
   { name: 'categorizacao_memoria', keyPath: 'key', autoIncrement: false },
@@ -34,7 +36,7 @@ const STORE_DEFS = [
 ];
 
 export const FULL_BACKUP_STORE_NAMES = STORE_DEFS.map(store => store.name);
-export const FULL_BACKUP_OPTIONAL_EMPTY_STORE_NAMES = ['categorizacao_regras', 'categorizacao_memoria', 'transaction_aliases'];
+export const FULL_BACKUP_OPTIONAL_EMPTY_STORE_NAMES = ['projecao_parametros', 'categorizacao_regras', 'categorizacao_memoria', 'transaction_aliases'];
 export const CLEAR_IMPORTED_STORE_NAMES = [
   'extrato_transacoes',
   'extrato_summary',
@@ -51,6 +53,7 @@ export const CLEAR_ALL_DATA_STORE_NAMES = [
   'despesas_fixas',
   'observacoes',
   'orcamentos',
+  'projecao_parametros',
   'categorizacao_regras',
   'categorizacao_memoria',
   'transaction_aliases',

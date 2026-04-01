@@ -113,7 +113,7 @@ export function initLancamentos(lancamentos, extratoTransacoes = [], _assinatura
   bindEditDialog();
   bindCategorizationDialog();
   bindExportButton();
-  renderLancamentosAnalytics(context.analytics || null);
+  renderLancamentosAnalytics(context.analytics || null, context.financialAnalysis || null);
   buildLancamentosContextPanel(context.cardBillSummaries || [], contextRows);
   renderCategorizationPanel();
   renderLancamentos(getSortedLancamentos(_lancamentos));
@@ -1094,11 +1094,52 @@ function describeMemoryScope(memory) {
   return `${source} · ${direction}`;
 }
 
-function renderLancamentosAnalytics(analytics) {
+export function buildLancamentosContextSummaryViewModel(financialAnalysis = null) {
+  const spending = financialAnalysis?.spending || {};
+  const budget = financialAnalysis?.budget || {};
+  const topCategory = spending?.strongestCategory || null;
+  const movers = (spending?.movers || []).slice(0, 2);
+  const quality = spending?.quality || {};
+
+  return {
+    shouldRender: Boolean(topCategory || movers.length || quality?.shouldWarn || budget?.status?.label),
+    topCategory: topCategory
+      ? {
+          label: topCategory.cat || 'Outros',
+          value: fmt(topCategory.total || 0),
+          note: `${Math.round(Number(topCategory.share || 0) * 100)}% do gasto categorizado`,
+        }
+      : null,
+    movers: movers.map(item => ({
+      label: item?.cat || 'Outros',
+      value: formatSignedCurrency(item?.delta || 0),
+      note: buildMoMNote(item, spending?.previousMonth, spending?.latestMonth),
+      color: resolveDeltaColor(item?.delta || 0),
+    })),
+    quality: quality?.shouldWarn
+      ? {
+          label: 'Qualidade da categorização',
+          note: quality.note || '',
+          badgeClass: 'badge-yellow',
+        }
+      : null,
+    budget: budget?.status?.label
+      ? {
+          label: budget.status.label,
+          value: formatSignedCurrency(budget?.freeBudgetEstimate || 0),
+          note: 'Saldo livre estimado na leitura compartilhada',
+          color: resolveToneColor((budget?.freeBudgetEstimate || 0) >= 0 ? 'healthy' : 'critical'),
+        }
+      : null,
+  };
+}
+
+function renderLancamentosAnalytics(analytics, financialAnalysis = null) {
   const panel = document.getElementById('lancamentosAnalyticsPanel');
   const summary = document.getElementById('lancamentosAnalyticsSummary');
   const movers = document.getElementById('lancamentosAnalyticsMovers');
   const quality = document.getElementById('lancamentosAnalyticsQuality');
+  const sharedSummary = buildLancamentosContextSummaryViewModel(financialAnalysis);
 
   if (!panel || !summary || !movers || !quality) return;
 
@@ -1140,6 +1181,7 @@ function renderLancamentosAnalytics(analytics) {
         <div class="sub">${escapeHtml(analytics.latestMonth || analytics.months[analytics.months.length - 1])}</div>
       </div>
     </div>
+    ${renderLancamentosSharedSummary(sharedSummary)}
   `;
 
   if (analytics.quality?.shouldWarn) {
@@ -1150,6 +1192,71 @@ function renderLancamentosAnalytics(analytics) {
 
   movers.innerHTML = buildMoversMarkup(analytics);
   renderAnalyticsChart(analytics);
+}
+
+function renderLancamentosSharedSummary(viewModel) {
+  if (!viewModel?.shouldRender) return '';
+
+  return `
+    <div class="surface-panel" style="margin-top:16px">
+      <div class="info-panel-title">Leitura rápida da camada compartilhada</div>
+      <div class="analysis-list" style="margin-top:14px">
+        ${viewModel.topCategory ? `
+          <div class="analysis-list-item">
+            <div class="analysis-list-top">
+              <strong>${escapeHtml(viewModel.topCategory.label)}</strong>
+              <span>${escapeHtml(viewModel.topCategory.value)}</span>
+            </div>
+            <div class="analysis-list-note">Concentração atual · ${escapeHtml(viewModel.topCategory.note)}</div>
+          </div>
+        ` : ''}
+        ${viewModel.movers.map(item => `
+          <div class="analysis-list-item">
+            <div class="analysis-list-top">
+              <strong>${escapeHtml(item.label)}</strong>
+              <span style="color:${item.color}">${escapeHtml(item.value)}</span>
+            </div>
+            <div class="analysis-list-note">${escapeHtml(item.note)}</div>
+          </div>
+        `).join('')}
+        ${viewModel.budget ? `
+          <div class="analysis-list-item">
+            <div class="analysis-list-top">
+              <strong>${escapeHtml(viewModel.budget.label)}</strong>
+              <span style="color:${viewModel.budget.color}">${escapeHtml(viewModel.budget.value)}</span>
+            </div>
+            <div class="analysis-list-note">${escapeHtml(viewModel.budget.note)}</div>
+          </div>
+        ` : ''}
+      </div>
+      ${viewModel.quality
+        ? `<div class="helper-badges" style="margin-top:12px"><span class="badge ${viewModel.quality.badgeClass}">🧩 ${escapeHtml(viewModel.quality.note)}</span></div>`
+        : ''}
+    </div>
+  `;
+}
+
+function buildMoMNote(item = {}, previousMonth = '', latestMonth = '') {
+  if (item?.note) return item.note;
+  if (previousMonth && latestMonth) return `${previousMonth} → ${latestMonth}`;
+  return 'Comparativo recente da análise compartilhada';
+}
+
+function formatSignedCurrency(value) {
+  const amount = Number(value || 0);
+  return amount > 0 ? `+${fmt(amount)}` : fmt(amount);
+}
+
+function resolveToneColor(tone) {
+  if (tone === 'healthy') return '#68d391';
+  if (tone === 'critical') return '#fc8181';
+  if (tone === 'attention') return '#f6ad55';
+  if (tone === 'info') return '#76e4f7';
+  return '#a0aec0';
+}
+
+function resolveDeltaColor(value) {
+  return Number(value || 0) >= 0 ? '#68d391' : '#fc8181';
 }
 
 function buildMoversMarkup(analytics) {

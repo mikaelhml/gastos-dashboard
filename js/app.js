@@ -13,6 +13,7 @@ import { openDB, seedIfEmpty, getAll } from './db.js';
 import { SEED_DATA }                    from './seed.js';
 
 import { buildVisaoGeral }              from './views/visao-geral.js';
+import { buildAnaliseFinanceira }       from './views/analise-financeira.js';
 import { buildAssinaturas }             from './views/assinaturas.js';
 import { buildDespesasFixas }           from './views/despesas-fixas.js';
 import { buildParcelamentos }           from './views/parcelamentos.js';
@@ -26,6 +27,8 @@ import { extrairParcelaFinal } from './parsers/pdf-utils.js';
 import { buildCardBillSummaries } from './utils/dashboard-context.js';
 import { buildSpendAnalytics } from './utils/analytics.js';
 import { buildScrProjectionModel } from './utils/projection-model.js';
+import { buildAutomaticProjectionInputs } from './utils/projection-auto.js';
+import { buildFinancialAnalysisModel } from './utils/financial-analysis.js';
 import { buildParcelamentoSummary } from './utils/parcelamento-summary.js';
 import { reconcileAccountCardPayments } from './utils/card-payment-reconciliation.js';
 import { normalizeOwnTransfers } from './utils/self-transfer-detection.js';
@@ -69,6 +72,7 @@ async function loadDashboardData() {
     extratoTransacoes,
     extratoSummary,
     orcamentos,
+    projecaoParametros,
     assinaturaSugestoesDispensa,
     categorizacaoRegras,
     categorizacaoMemoria,
@@ -84,6 +88,7 @@ async function loadDashboardData() {
     getAll('extrato_transacoes'),
     getAll('extrato_summary'),
     getAll('orcamentos'),
+    getAll('projecao_parametros'),
     getAll('assinatura_sugestoes_dispensa'),
     getAll('categorizacao_regras'),
     getAll('categorizacao_memoria'),
@@ -116,6 +121,7 @@ async function loadDashboardData() {
     extratoTransacoes,
     extratoSummary,
     orcamentos,
+    simuladorProjecaoConfig: projecaoParametros[0] || null,
     assinaturaSugestoesDispensa,
     categorizacaoRegras,
     categorizacaoMemoria,
@@ -220,6 +226,7 @@ async function renderDashboard() {
     extratoTransacoes,
     extratoSummary,
     orcamentos,
+    simuladorProjecaoConfig,
     assinaturaSugestoesDispensa,
     categorizacaoRegras,
     categorizacaoMemoria,
@@ -260,8 +267,32 @@ async function renderDashboard() {
     lancamentos,
   });
   const projectionRecurringItems = buildProjectionRecurringItems(despesasFixas, assinaturas);
+  const automaticProjection = buildAutomaticProjectionInputs({
+    extratoTransacoes: extratoTransacoesReconciled,
+    extratoSummary,
+    cardBillSummaries,
+    recurringCommitments: projectionRecurringItems,
+  });
+  const financialAnalysis = buildFinancialAnalysisModel({
+    assinaturas,
+    despesasFixas,
+    recurringCommitments: projectionRecurringItems,
+    extratoSummary,
+    orcamentos,
+    registratoInsights,
+    cardBillSummaries,
+    spendAnalytics,
+    scrProjectionModel,
+    automaticProjection,
+  });
 
-  buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, extratoTransacoesReconciled, lancamentos, registratoInsights, cardBillSummaries);
+  buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, extratoTransacoesReconciled, lancamentos, registratoInsights, cardBillSummaries, {
+    financialAnalysis,
+  });
+  buildAnaliseFinanceira(financialAnalysis, {
+    automaticProjection,
+    scrProjectionModel,
+  });
   buildAssinaturas(assinaturas, observacoes, lancamentos, extratoTransacoesReconciled, assinaturaSugestoesDispensa, transactionAliases);
   buildDespesasFixas(despesasFixas, registratoSuggestions, transactionAliases);
   buildParcelamentos(despesasFixas, lancamentos, transactionAliases);
@@ -270,11 +301,13 @@ async function renderDashboard() {
     cardBillSummaries,
     categorizationRules: categorizacaoRegras,
     categorizationMemories: categorizacaoMemoria,
+    financialAnalysis,
     registratoContextRows: [],
     transactionAliases,
   });
   initExtrato(extratoTransacoesReconciled, extratoSummary, {
     cardBillSummaries,
+    financialAnalysis,
     registratoContextRows: [],
     registratoInsights,
     transactionAliases,
@@ -282,21 +315,30 @@ async function renderDashboard() {
   initProjecao(despesasFixas, extratoSummary, registratoInsights, {
     scrProjectionModel,
     parcelamentoSummary,
+    automaticProjection,
+    persistedSimulatorConfig: simuladorProjecaoConfig,
+    financialAnalysis,
     extratoTransacoes: extratoTransacoesReconciled,
     cardBillSummaries,
     recurringCommitments: projectionRecurringItems,
   });
-  buildRegistrato(registratoResumos, registratoSnapshots, registratoSuggestions, registratoInsights);
+  buildRegistrato(registratoResumos, registratoSnapshots, registratoSuggestions, registratoInsights, {
+    financialAnalysis,
+  });
   await buildImportar();
 }
 
 async function renderRegistratoSurfaces() {
   const {
     assinaturas,
+    categorizacaoMemoria,
+    categorizacaoRegras,
     despesasFixas,
     lancamentos,
     extratoTransacoes,
     extratoSummary,
+    orcamentos,
+    simuladorProjecaoConfig,
     registratoSnapshots,
     registratoResumos,
     registratoSugestoesDispensa,
@@ -314,10 +356,13 @@ async function renderRegistratoSurfaces() {
   });
   const registratoInsights = computeRegistratoInsights(registratoResumos, registratoSuggestions);
   const cardBillSummaries = buildCardBillSummaries(lancamentos);
+  const extratoTransacoesReconciled = normalizeOwnTransfers(
+    reconcileAccountCardPayments(extratoTransacoes, cardBillSummaries),
+  );
   const scrProjectionModel = buildScrProjectionModel({
     despesasFixas,
     lancamentos,
-    extratoTransacoes,
+    extratoTransacoes: extratoTransacoesReconciled,
     registratoSnapshots,
     registratoResumos,
     dismissals: registratoSugestoesDispensa,
@@ -327,18 +372,67 @@ async function renderRegistratoSurfaces() {
     lancamentos,
   });
   const projectionRecurringItems = buildProjectionRecurringItems(despesasFixas, assinaturas);
+  const automaticProjection = buildAutomaticProjectionInputs({
+    extratoTransacoes: extratoTransacoesReconciled,
+    extratoSummary,
+    cardBillSummaries,
+    recurringCommitments: projectionRecurringItems,
+  });
+  const spendAnalytics = buildSpendAnalytics({
+    lancamentos,
+    extratoTransacoes: extratoTransacoesReconciled,
+  });
+  const financialAnalysis = buildFinancialAnalysisModel({
+    assinaturas,
+    despesasFixas,
+    recurringCommitments: projectionRecurringItems,
+    extratoSummary,
+    orcamentos,
+    registratoInsights,
+    cardBillSummaries,
+    spendAnalytics,
+    scrProjectionModel,
+    automaticProjection,
+  });
 
-  buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, extratoTransacoes, lancamentos, registratoInsights, cardBillSummaries);
+  buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, extratoTransacoesReconciled, lancamentos, registratoInsights, cardBillSummaries, {
+    financialAnalysis,
+  });
+  buildAnaliseFinanceira(financialAnalysis, {
+    automaticProjection,
+    scrProjectionModel,
+  });
   buildDespesasFixas(despesasFixas, registratoSuggestions, transactionAliases);
   buildParcelamentos(despesasFixas, lancamentos, transactionAliases);
-  initProjecao(projectionRecurringItems, extratoSummary, registratoInsights, {
+  initLancamentos(lancamentos, extratoTransacoesReconciled, assinaturas, despesasFixas, {
+    analytics: spendAnalytics,
+    cardBillSummaries,
+    categorizationRules: categorizacaoRegras,
+    categorizationMemories: categorizacaoMemoria,
+    financialAnalysis,
+    registratoContextRows: [],
+    transactionAliases,
+  });
+  initExtrato(extratoTransacoesReconciled, extratoSummary, {
+    cardBillSummaries,
+    financialAnalysis,
+    registratoContextRows: [],
+    registratoInsights,
+    transactionAliases,
+  });
+  initProjecao(despesasFixas, extratoSummary, registratoInsights, {
     scrProjectionModel,
     parcelamentoSummary,
-    extratoTransacoes,
-    lancamentos,
+    automaticProjection,
+    persistedSimulatorConfig: simuladorProjecaoConfig,
+    financialAnalysis,
+    extratoTransacoes: extratoTransacoesReconciled,
     cardBillSummaries,
+    recurringCommitments: projectionRecurringItems,
   });
-  buildRegistrato(registratoResumos, registratoSnapshots, registratoSuggestions, registratoInsights);
+  buildRegistrato(registratoResumos, registratoSnapshots, registratoSuggestions, registratoInsights, {
+    financialAnalysis,
+  });
 }
 
 function nextPaint() {

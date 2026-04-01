@@ -582,11 +582,12 @@ export async function clearBase() {
     '  • Todas as transacoes do extrato\n' +
     '  • Todos os lancamentos de fatura\n' +
     '  • Registro de PDFs importados\n\n' +
-    'Serao MANTIDOS:\n' +
-    '  • Assinaturas\n' +
-    '  • Despesas fixas\n' +
-    '  • Regras de categorizacao\n' +
-    '  • Correcoes lembradas de categoria',
+     'Serao MANTIDOS:\n' +
+     '  • Assinaturas\n' +
+     '  • Despesas fixas\n' +
+     '  • Parametros salvos da projecao\n' +
+     '  • Regras de categorizacao\n' +
+     '  • Correcoes lembradas de categoria',
   );
   if (!ok) return;
 
@@ -601,12 +602,13 @@ export async function clearAllDashboardData() {
     '  • Todas as transacoes do extrato\n' +
     '  • Todos os lancamentos de fatura\n' +
     '  • Registro de PDFs importados\n' +
-    '  • Assinaturas\n' +
-    '  • Despesas fixas\n' +
-    '  • Observacoes\n' +
-    '  • Orcamentos\n' +
-    '  • Regras de categorizacao\n' +
-    '  • Correcoes lembradas de categoria\n\n' +
+     '  • Assinaturas\n' +
+     '  • Despesas fixas\n' +
+     '  • Observacoes\n' +
+     '  • Orcamentos\n' +
+     '  • Parametros salvos da projecao\n' +
+     '  • Regras de categorizacao\n' +
+     '  • Correcoes lembradas de categoria\n\n' +
     'Essa acao nao pode ser desfeita.',
   );
   if (!ok) return;

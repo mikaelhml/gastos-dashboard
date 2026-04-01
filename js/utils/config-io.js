@@ -1,21 +1,25 @@
-import { openDB, getAll, clearStore, bulkAdd, addItem } from '../db.js';
+import { openDB, getAll, clearStore, bulkAdd, addItem, putItem } from '../db.js';
+import {
+  buildProjectionSimulatorConfigRecord,
+  serializeProjectionSimulatorConfig,
+} from './projection-simulator-config.js';
 
 const CONFIG_VERSION = 1;
 
 export async function exportConfig() {
   await openDB();
 
-  const [assinaturas, despesasFixas] = await Promise.all([
+  const [assinaturas, despesasFixas, projecaoParametros] = await Promise.all([
     getAll('assinaturas'),
     getAll('despesas_fixas'),
+    getAll('projecao_parametros'),
   ]);
 
-  const payload = {
-    versao: CONFIG_VERSION,
-    exportadoEm: new Date().toISOString(),
-    assinaturas: assinaturas.map(normalizeAssinatura),
-    despesas_fixas: despesasFixas.map(normalizeDespesa),
-  };
+  const payload = buildConfigPayload({
+    assinaturas,
+    despesasFixas,
+    projectionSimulatorConfig: projecaoParametros[0] || null,
+  });
 
   const blob = new Blob(
     [JSON.stringify(payload, null, 2)],
@@ -33,32 +37,42 @@ export async function importConfig(file) {
     await openDB();
 
     const rawText = await readTextFile(file);
-    const parsed = JSON.parse(rawText);
-    validateConfig(parsed);
+    const normalized = normalizeConfigPayload(JSON.parse(rawText));
 
     const replace = confirm(
-      'OK = substituir suas assinaturas e despesas fixas atuais.\n' +
+      'OK = substituir assinaturas, despesas fixas e, quando existir no arquivo, os parametros salvos da projecao.\n' +
       'Cancelar = mesclar apenas itens que ainda nao existem.',
     );
     const modo = replace ? 'substituir' : 'mesclar';
 
-    const assinaturas = parsed.assinaturas.map(normalizeAssinatura);
-    const despesasFixas = parsed.despesas_fixas.map(normalizeDespesa);
+    const {
+      assinaturas,
+      despesas_fixas: despesasFixas,
+      projecao_simulador: projecaoSimulador,
+      hasProjectionSimulator,
+    } = normalized;
 
     if (modo === 'substituir') {
       await clearStore('assinaturas');
       await clearStore('despesas_fixas');
       await bulkAdd('assinaturas', assinaturas);
       await bulkAdd('despesas_fixas', despesasFixas);
+      if (hasProjectionSimulator) {
+        await clearStore('projecao_parametros');
+        if (projecaoSimulador) {
+          await putItem('projecao_parametros', projecaoSimulador);
+        }
+      }
       return {
-        importados: assinaturas.length + despesasFixas.length,
+        importados: assinaturas.length + despesasFixas.length + (projecaoSimulador ? 1 : 0),
         modo,
       };
     }
 
-    const [atuaisAssinaturas, atuaisDespesas] = await Promise.all([
+    const [atuaisAssinaturas, atuaisDespesas, atuaisProjecaoParametros] = await Promise.all([
       getAll('assinaturas'),
       getAll('despesas_fixas'),
+      getAll('projecao_parametros'),
     ]);
 
     const nomesExistentes = new Set(
@@ -88,6 +102,16 @@ export async function importConfig(file) {
       }
     }
 
+    const projecaoSimuladorMesclada = mergeProjectionSimulatorConfig(
+      atuaisProjecaoParametros[0] || null,
+      hasProjectionSimulator ? projecaoSimulador : undefined,
+    );
+
+    if (hasProjectionSimulator && projecaoSimuladorMesclada && !atuaisProjecaoParametros[0]) {
+      await putItem('projecao_parametros', projecaoSimuladorMesclada);
+      importados++;
+    }
+
     return { importados, modo };
   } catch (error) {
     return {
@@ -98,7 +122,22 @@ export async function importConfig(file) {
   }
 }
 
-function validateConfig(parsed) {
+export function buildConfigPayload({
+  assinaturas = [],
+  despesasFixas = [],
+  projectionSimulatorConfig = null,
+  exportadoEm = new Date().toISOString(),
+} = {}) {
+  return {
+    versao: CONFIG_VERSION,
+    exportadoEm,
+    assinaturas: assinaturas.map(normalizeAssinatura),
+    despesas_fixas: despesasFixas.map(normalizeDespesa),
+    projecao_simulador: serializeProjectionSimulatorConfig(projectionSimulatorConfig),
+  };
+}
+
+export function normalizeConfigPayload(parsed) {
   if (!parsed || typeof parsed !== 'object') {
     throw new Error('JSON invalido.');
   }
@@ -110,6 +149,24 @@ function validateConfig(parsed) {
   if (!Array.isArray(parsed.assinaturas) || !Array.isArray(parsed.despesas_fixas)) {
     throw new Error('Estrutura invalida: assinaturas e despesas_fixas devem ser listas.');
   }
+
+  const hasProjectionSimulator = Object.prototype.hasOwnProperty.call(parsed, 'projecao_simulador');
+  const projectionSimulator = hasProjectionSimulator
+    ? normalizeProjectionSimulatorImport(parsed.projecao_simulador)
+    : undefined;
+
+  return {
+    versao: CONFIG_VERSION,
+    exportadoEm: String(parsed.exportadoEm ?? ''),
+    assinaturas: parsed.assinaturas.map(normalizeAssinatura),
+    despesas_fixas: parsed.despesas_fixas.map(normalizeDespesa),
+    projecao_simulador: projectionSimulator,
+    hasProjectionSimulator,
+  };
+}
+
+export function mergeProjectionSimulatorConfig(currentConfig, importedConfig) {
+  return currentConfig || importedConfig || null;
 }
 
 function normalizeAssinatura(item) {
@@ -187,6 +244,14 @@ function normalizeParcelas(item) {
 
 function normalizeKey(value) {
   return String(value ?? '').trim().toLocaleLowerCase('pt-BR');
+}
+
+function normalizeProjectionSimulatorImport(value) {
+  if (value == null) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Configuracao invalida: projecao_simulador deve ser um objeto ou null.');
+  }
+  return buildProjectionSimulatorConfigRecord(value, {});
 }
 
 function readTextFile(file) {

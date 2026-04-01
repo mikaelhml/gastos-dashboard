@@ -1,7 +1,13 @@
 import { fmt } from '../utils/formatters.js';
+import { putItem } from '../db.js';
 import { escapeHtml } from '../utils/dom.js';
 import { buildProjectionSchedule } from '../utils/projection-model.js';
 import { buildAutomaticProjectionInputs } from '../utils/projection-auto.js';
+import {
+  buildProjectionSimulatorConfigRecord,
+  normalizeProjectionSimulatorConfig,
+  normalizeProjectionSimulatorInputs,
+} from '../utils/projection-simulator-config.js';
 
 let _chartSaldo  = null;
 let _chartBarras = null;
@@ -15,7 +21,12 @@ let _ultimoMes  = 'Fev/2026';
 let _registratoInsights = null;
 let _scrProjectionModel = createEmptyScrModel();
 let _parcelamentoSummary = createEmptyParcelamentoSummary();
+let _financialAnalysis = null;
 let _autoProjection = { inputs: { salario: 0, rendaExtra: 0, itau: 0, outros: 0, meses: 6 }, notes: [], diagnostics: {} };
+let _persistedSimulatorConfig = null;
+let _projectionInputsBound = false;
+let _projectionPersistTimer = null;
+let _lastPersistedProjectionSignature = '';
 
 function createEmptyScrModel() {
   return {
@@ -77,19 +88,27 @@ export function initProjecao(despesasFixas, extratoSummary, registratoInsights =
   _registratoInsights = registratoInsights;
   _scrProjectionModel = options?.scrProjectionModel || createEmptyScrModel();
   _parcelamentoSummary = options?.parcelamentoSummary || createEmptyParcelamentoSummary();
-  _autoProjection = buildAutomaticProjectionInputs({
+  _financialAnalysis = options?.financialAnalysis || null;
+  _autoProjection = options?.automaticProjection || buildAutomaticProjectionInputs({
     extratoTransacoes: options?.extratoTransacoes || [],
     extratoSummary,
     cardBillSummaries: options?.cardBillSummaries || [],
-    recurringCommitments: _despesasFixas,
+    recurringCommitments: options?.recurringCommitments || _despesasFixas,
   });
+  _persistedSimulatorConfig = options?.persistedSimulatorConfig
+    ? normalizeProjectionSimulatorConfig(options.persistedSimulatorConfig, _autoProjection.inputs)
+    : null;
+  _lastPersistedProjectionSignature = '';
 
   const summaryReal = extratoSummary.filter(m => !m.apenasHistorico);
   const ultimo = summaryReal[summaryReal.length - 1];
   _saldoAtual = ultimo ? ultimo.saldoFinal : 0;
   _ultimoMes  = ultimo ? ultimo.mes : 'Fev/2026';
 
-  applyAutomaticInputs();
+  applyProjectionInputs();
+  _lastPersistedProjectionSignature = getProjectionInputsSignature(readProjectionFormInputs());
+  bindProjectionInputPersistence();
+  renderFinancialAnalysisPanel();
   renderScrProjectionPanel();
   renderAutomaticProjectionPanel();
   buildCenarios();
@@ -134,7 +153,7 @@ function calcProjecao(salario, rendaExtra, itau, outros, nMeses) {
 }
 
 function buildCenarios() {
-  const base = _autoProjection?.inputs || { salario: 0, rendaExtra: 0, itau: 0, outros: 0 };
+  const base = getCurrentProjectionInputs();
   const cenarios = [
     {
       id: 'otimista',
@@ -186,6 +205,8 @@ function buildCenarios() {
 }
 
 export function recalcularProjecao() {
+  persistProjectionInputs({ immediate: true });
+
   const salario = parseNumberInput('pSalario', 0);
   const rendaExtra = parseNumberInput('pRendaExtra', 0);
   const itau = parseNumberInput('pItau', 0);
@@ -212,15 +233,83 @@ export function recalcularProjecao() {
       ? `<span style="color:#a0aec0">· ${commitmentTotals.contextualCount} leitura(s) contextuais e ${commitmentTotals.conflictCount} conflito(s) fora do cálculo</span>`
       : ''}`;
 
+  buildCenarios();
   renderScrProjectionPanel();
+  renderFinancialAnalysisPanel();
   renderAutomaticProjectionPanel();
   renderProjecaoTable(rows);
   updateProjecaoCharts(rows, itau, outros);
   renderAlerta(rows, resultMes);
 }
 
-function applyAutomaticInputs() {
-  const inputs = _autoProjection?.inputs || {};
+function renderFinancialAnalysisPanel() {
+  const panel = document.getElementById('projecaoAnalysisPanel');
+  if (!panel) return;
+
+  if (!_financialAnalysis) {
+    panel.innerHTML = '';
+    panel.style.display = 'none';
+    return;
+  }
+
+  const budget = _financialAnalysis.budget || {};
+  const debt = _financialAnalysis.debt || {};
+  const bullets = (_financialAnalysis.narrative?.bullets || []).slice(0, 3);
+  const accent = resolveAnalysisToneColor(budget?.status?.tone);
+
+  panel.innerHTML = `
+    <div class="helper-panel-header">
+      <div>
+        <h3>📌 Leitura-base antes da simulação</h3>
+        <p>${escapeHtml(budget?.status?.note || 'Use esta leitura como referência e depois ajuste os parâmetros para testar cenários.')}</p>
+      </div>
+      <span style="display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:${accent};font-size:0.82rem;font-weight:700">${escapeHtml(budget?.status?.label || 'Sem base suficiente')}</span>
+    </div>
+    <div class="cards" style="margin-top:12px">
+      <div class="card" style="--accent:${resolveAnalysisToneColor('info')}">
+        <div class="label">Renda estimada/mês</div>
+        <div class="value" style="color:${resolveAnalysisToneColor('info')}">${escapeHtml(fmt(budget?.estimatedIncome || 0))}</div>
+        <div class="sub">Entradas recorrentes detectadas no histórico</div>
+      </div>
+      <div class="card" style="--accent:${resolveAnalysisToneColor(budget?.status?.tone)}">
+        <div class="label">Comprometimento base</div>
+        <div class="value" style="color:${resolveAnalysisToneColor(budget?.status?.tone)}">${escapeHtml(fmt(budget?.recurringWithCredit || 0))}</div>
+        <div class="sub">${Math.round((budget?.commitmentRatio || 0) * 100)}% da renda antes dos variáveis</div>
+      </div>
+      <div class="card" style="--accent:${resolveAnalysisToneColor(budget?.freeBudgetEstimate >= 0 ? 'healthy' : 'critical')}">
+        <div class="label">Saldo livre estimado</div>
+        <div class="value" style="color:${resolveAnalysisToneColor(budget?.freeBudgetEstimate >= 0 ? 'healthy' : 'critical')}">${escapeHtml(fmt(budget?.freeBudgetEstimate || 0))}</div>
+        <div class="sub">Cenário base antes de editar os parâmetros</div>
+      </div>
+      <div class="card" style="--accent:${resolveAnalysisToneColor(debt?.overdue > 0 ? 'critical' : 'neutral')}">
+        <div class="label">Exposição no SCR</div>
+        <div class="value" style="color:${resolveAnalysisToneColor(debt?.overdue > 0 ? 'critical' : 'neutral')}">${escapeHtml(fmt(debt?.totalExposure || 0))}</div>
+        <div class="sub">${debt?.overdue > 0 ? 'Inclui dívida vencida' : 'Saldo consolidado em crédito'}</div>
+      </div>
+    </div>
+    ${bullets.length ? `
+      <div class="info-panel" style="margin-top:16px;margin-bottom:0">
+        <div class="info-panel-title">Leituras que ajudam a calibrar a simulação</div>
+        <div class="info-panel-body">
+          <ul style="margin:10px 0 0 18px;padding:0;display:grid;gap:6px">
+            ${bullets.map(item => `<li>${escapeHtml(item)}</li>`).join('')}
+          </ul>
+        </div>
+      </div>
+    ` : ''}`;
+  panel.style.display = '';
+}
+
+function resolveAnalysisToneColor(tone) {
+  if (tone === 'healthy') return '#68d391';
+  if (tone === 'critical') return '#fc8181';
+  if (tone === 'attention') return '#f6ad55';
+  if (tone === 'info') return '#76e4f7';
+  return '#a0aec0';
+}
+
+function applyProjectionInputs() {
+  const inputs = resolveProjectionFormInputs();
   setNumberInputValue('pSalario', inputs.salario || 0);
   setNumberInputValue('pRendaExtra', inputs.rendaExtra || 0);
   setNumberInputValue('pItau', inputs.itau || 0);
@@ -229,6 +318,76 @@ function applyAutomaticInputs() {
   if (monthSelect && String(inputs.meses || 6) !== monthSelect.value) {
     monthSelect.value = String(inputs.meses || 6);
   }
+}
+
+function resolveProjectionFormInputs() {
+  return normalizeProjectionSimulatorInputs(_persistedSimulatorConfig, _autoProjection?.inputs || {});
+}
+
+function getCurrentProjectionInputs() {
+  const formReady = ['pSalario', 'pRendaExtra', 'pItau', 'pOutros', 'pMeses']
+    .every(id => document.getElementById(id));
+
+  return formReady
+    ? readProjectionFormInputs()
+    : resolveProjectionFormInputs();
+}
+
+function bindProjectionInputPersistence() {
+  if (_projectionInputsBound) return;
+
+  const inputIds = ['pSalario', 'pRendaExtra', 'pItau', 'pOutros', 'pMeses'];
+  inputIds.forEach(id => {
+    const element = document.getElementById(id);
+    if (!element) return;
+    element.addEventListener('input', () => persistProjectionInputs());
+    element.addEventListener('change', () => persistProjectionInputs({ immediate: true }));
+  });
+
+  _projectionInputsBound = true;
+}
+
+function persistProjectionInputs({ immediate = false } = {}) {
+  if (_projectionPersistTimer) {
+    window.clearTimeout(_projectionPersistTimer);
+    _projectionPersistTimer = null;
+  }
+
+  const save = async () => {
+    try {
+      const payload = buildProjectionSimulatorConfigRecord(readProjectionFormInputs(), _autoProjection?.inputs || {});
+      const signature = getProjectionInputsSignature(payload);
+      if (signature === _lastPersistedProjectionSignature) return;
+
+      await putItem('projecao_parametros', payload);
+      _persistedSimulatorConfig = payload;
+      _lastPersistedProjectionSignature = signature;
+    } catch (error) {
+      console.error('[Projecao] Falha ao persistir parametros do simulador:', error);
+    }
+  };
+
+  if (immediate) {
+    void save();
+    return;
+  }
+
+  _projectionPersistTimer = window.setTimeout(() => { void save(); }, 300);
+}
+
+function readProjectionFormInputs() {
+  return {
+    salario: parseNumberInput('pSalario', 0),
+    rendaExtra: parseNumberInput('pRendaExtra', 0),
+    itau: parseNumberInput('pItau', 0),
+    outros: parseNumberInput('pOutros', 0),
+    meses: parseMonthCount(),
+  };
+}
+
+function getProjectionInputsSignature(inputs) {
+  const normalized = normalizeProjectionSimulatorInputs(inputs);
+  return JSON.stringify(normalized);
 }
 
 function renderAutomaticProjectionPanel() {
@@ -274,18 +433,18 @@ function renderScrProjectionPanel() {
 
   const commitments = _scrProjectionModel?.commitments || [];
   const totals = _scrProjectionModel?.totals || createEmptyScrModel().totals;
-  const autoInputs = _autoProjection?.inputs || { salario: 0, rendaExtra: 0, itau: 0, outros: 0 };
+  const projectionInputs = getCurrentProjectionInputs();
   const topCategories = _autoProjection?.diagnostics?.topVariableCategories || [];
   const totalCommitments = Number(_fixoMensal?.total || 0) + Number(totals.includedMonthlyTotal || 0);
-  const saldoMensalBase = (autoInputs.salario + autoInputs.rendaExtra) - (totalCommitments + autoInputs.itau + autoInputs.outros);
+  const saldoMensalBase = (projectionInputs.salario + projectionInputs.rendaExtra) - (totalCommitments + projectionInputs.itau + projectionInputs.outros);
 
   summaryEl.innerHTML = `
     <div class="summary-bar" style="margin-top:8px">
       <div class="sb-item"><span class="sb-label">Base fixa do mês:</span><span class="sb-value" style="color:#90cdf4">${escapeHtml(fmt(totalCommitments))}</span></div>
       <div class="divider"></div>
-      <div class="sb-item"><span class="sb-label">Cartão médio:</span><span class="sb-value" style="color:#fc8181">${escapeHtml(fmt(autoInputs.itau || 0))}</span></div>
+      <div class="sb-item"><span class="sb-label">Cartão médio:</span><span class="sb-value" style="color:#fc8181">${escapeHtml(fmt(projectionInputs.itau || 0))}</span></div>
       <div class="divider"></div>
-      <div class="sb-item"><span class="sb-label">Gastos variáveis:</span><span class="sb-value" style="color:#f6ad55">${escapeHtml(fmt(autoInputs.outros || 0))}</span></div>
+      <div class="sb-item"><span class="sb-label">Gastos variáveis:</span><span class="sb-value" style="color:#f6ad55">${escapeHtml(fmt(projectionInputs.outros || 0))}</span></div>
       <div class="divider"></div>
       <div class="sb-item"><span class="sb-label">Resultado base:</span><span class="sb-value" style="color:${saldoMensalBase >= 0 ? '#68d391' : '#fc8181'}">${saldoMensalBase >= 0 ? '+' : ''}${escapeHtml(fmt(saldoMensalBase))}</span></div>
     </div>`;

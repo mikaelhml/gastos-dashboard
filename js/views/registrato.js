@@ -1,12 +1,36 @@
 import { fmt } from '../utils/formatters.js';
 import { escapeHtml } from '../utils/dom.js';
 
-export function buildRegistrato(registratoResumos = [], registratoSnapshots = [], registratoSuggestions = [], registratoInsights = null) {
+export function buildRegistratoContextSummaryViewModel(financialAnalysis = null) {
+  const budget = financialAnalysis?.budget || {};
+  const debt = financialAnalysis?.debt || {};
+
+  return {
+    shouldRender: Boolean(
+      budget?.status?.label ||
+      Number(debt?.totalExposure || 0) > 0 ||
+      Number(debt?.includedProjection || 0) > 0 ||
+      Number(debt?.conflictProjection || 0) > 0
+    ),
+    statusLabel: budget?.status?.label || 'Sem base suficiente',
+    exposure: fmt(debt?.totalExposure || 0),
+    included: fmt(debt?.includedProjection || 0),
+    conflict: fmt(debt?.conflictProjection || 0),
+    freeBudget: formatSignedCurrency(budget?.freeBudgetEstimate || 0),
+    freeBudgetColor: resolveToneColor((budget?.freeBudgetEstimate || 0) >= 0 ? 'healthy' : 'critical'),
+    pressureRatio: Math.round(Number(budget?.pressureRatio || 0) * 100),
+    overdue: fmt(debt?.overdue || 0),
+    overdueExists: Number(debt?.overdue || 0) > 0,
+  };
+}
+
+export function buildRegistrato(registratoResumos = [], registratoSnapshots = [], registratoSuggestions = [], registratoInsights = null, options = {}) {
   const root = document.getElementById('registratoRoot');
   if (!root) return;
 
   const monthHistory = registratoResumos.slice().sort(compareByMesRef);
   const latest = registratoInsights?.latest || monthHistory.at(-1) || null;
+  const sharedSummary = buildRegistratoContextSummaryViewModel(options.financialAnalysis || null);
 
   if (!latest) {
     root.innerHTML = `
@@ -54,6 +78,8 @@ export function buildRegistrato(registratoResumos = [], registratoSnapshots = []
       ${renderCard('Coobrigações', fmt(Number(latest?.coobrigacoes || 0)), 'Compromissos indiretos informados no SCR', '#b794f4')}
       ${renderCard('Operações mapeadas', String(totalOperacoes), 'Soma das operações detectadas nos meses importados', '#68d391')}
     </div>
+
+    ${renderRegistratoSharedSummary(sharedSummary)}
 
     <div class="chart-grid" style="margin-bottom:24px">
       <div class="chart-box">
@@ -119,6 +145,65 @@ export function buildRegistrato(registratoResumos = [], registratoSnapshots = []
         <tbody>${renderOperationsTable(latestOperations, latestMonthSnapshots)}</tbody>
       </table>
     </div>`;
+}
+
+function renderRegistratoSharedSummary(viewModel) {
+  if (!viewModel?.shouldRender) return '';
+
+  return `
+    <div class="helper-panel" style="margin-bottom:24px">
+      <div class="helper-panel-header">
+        <div>
+          <h3>🔗 SCR dentro do orçamento compartilhado</h3>
+          <p>Esta leitura reaproveita a camada central para mostrar o que do Registrato já impacta projeção, folga mensal e atenção imediata.</p>
+        </div>
+      </div>
+      <div class="split-panel">
+        <div class="surface-panel">
+          <div class="info-panel-title">Impacto na projeção</div>
+          <div class="analysis-list" style="margin-top:14px">
+            <div class="analysis-list-item">
+              <div class="analysis-list-top">
+                <strong>SCR incluído por mês</strong>
+                <span>${escapeHtml(viewModel.included)}</span>
+              </div>
+              <div class="analysis-list-note">Compromissos já incorporados na matemática da projeção central.</div>
+            </div>
+            <div class="analysis-list-item">
+              <div class="analysis-list-top">
+                <strong>Fora por conflito/contexto</strong>
+                <span>${escapeHtml(viewModel.conflict)}</span>
+              </div>
+              <div class="analysis-list-note">Valores preservados como contexto para evitar duplicidade no orçamento.</div>
+            </div>
+          </div>
+        </div>
+        <div class="surface-panel">
+          <div class="info-panel-title">Exposição versus folga</div>
+          <div class="analysis-list" style="margin-top:14px">
+            <div class="analysis-list-item">
+              <div class="analysis-list-top">
+                <strong>${escapeHtml(viewModel.statusLabel)}</strong>
+                <span style="color:${viewModel.freeBudgetColor}">${escapeHtml(viewModel.freeBudget)}</span>
+              </div>
+              <div class="analysis-list-note">Saldo livre estimado com pressão total perto de ${escapeHtml(String(viewModel.pressureRatio))}% da renda.</div>
+            </div>
+            <div class="analysis-list-item">
+              <div class="analysis-list-top">
+                <strong>Exposição total SCR</strong>
+                <span>${escapeHtml(viewModel.exposure)}</span>
+              </div>
+              <div class="analysis-list-note">
+                ${viewModel.overdueExists
+                  ? `Inclui ${escapeHtml(viewModel.overdue)} em atraso, exigindo prioridade antes de ampliar novas parcelas.`
+                  : 'A exposição ajuda a contextualizar crédito aberto versus orçamento livre.'}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function renderCard(label, value, sub, accent) {
@@ -362,4 +447,17 @@ function confidenceBadge(value) {
   if (value === 'alta') return 'badge-green';
   if (value === 'media') return 'badge-yellow';
   return 'badge-gray';
+}
+
+function formatSignedCurrency(value) {
+  const amount = Number(value || 0);
+  return amount > 0 ? `+${fmt(amount)}` : fmt(amount);
+}
+
+function resolveToneColor(tone) {
+  if (tone === 'healthy') return '#68d391';
+  if (tone === 'critical') return '#fc8181';
+  if (tone === 'attention') return '#f6ad55';
+  if (tone === 'info') return '#76e4f7';
+  return '#a0aec0';
 }

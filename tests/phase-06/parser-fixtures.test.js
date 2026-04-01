@@ -63,6 +63,14 @@ test('itau fatura fixture classifies issuer, profile and parses a transactional 
   assert.equal(parsed.valor, 120.55);
 });
 
+test('itau fatura parser removes leaked header noise from OCR-split merchant description', () => {
+  const parsed = itauFaturaTest.parseTransactionLine('05/03 ELETRONICOS AMENTOS NO CART Ã O 670,89', 'Mar/2026');
+
+  assert.ok(parsed);
+  assert.equal(parsed.desc, 'ELETRONICOS');
+  assert.equal(parsed.valor, 670.89);
+});
+
 test('registrato fixtures split monthly blocks and parse institution records', () => {
   const rawLines = [
     'Relatório de Empréstimos e Financiamentos (SCR)',

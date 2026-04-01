@@ -23,10 +23,12 @@ import { buildRegistrato }               from './views/registrato.js';
 import { buildImportar, clearBase, clearAllDashboardData }     from './views/importar.js';
 import { buildRegistratoSuggestions, computeRegistratoInsights }   from './utils/registrato-suggestions.js';
 import { extrairParcelaFinal } from './parsers/pdf-utils.js';
-import { buildCardBillSummaries, buildRegistratoContextRows } from './utils/dashboard-context.js';
+import { buildCardBillSummaries } from './utils/dashboard-context.js';
 import { buildSpendAnalytics } from './utils/analytics.js';
 import { buildScrProjectionModel } from './utils/projection-model.js';
 import { buildParcelamentoSummary } from './utils/parcelamento-summary.js';
+import { reconcileAccountCardPayments } from './utils/card-payment-reconciliation.js';
+import { normalizeOwnTransfers } from './utils/self-transfer-detection.js';
 
 let _refreshChain = Promise.resolve();
 const REGISTRATO_VALUE_FIELDS = ['emDia', 'vencida', 'outrosCompromissos', 'creditoALiberar', 'coobrigacoes', 'limite'];
@@ -238,14 +240,17 @@ async function renderDashboard() {
   });
   const registratoInsights = computeRegistratoInsights(registratoResumos, registratoSuggestions);
   const cardBillSummaries = buildCardBillSummaries(lancamentos);
+  const extratoTransacoesReconciled = normalizeOwnTransfers(
+    reconcileAccountCardPayments(extratoTransacoes, cardBillSummaries),
+  );
   const spendAnalytics = buildSpendAnalytics({
     lancamentos,
-    extratoTransacoes,
+    extratoTransacoes: extratoTransacoesReconciled,
   });
   const scrProjectionModel = buildScrProjectionModel({
     despesasFixas,
     lancamentos,
-    extratoTransacoes,
+    extratoTransacoes: extratoTransacoesReconciled,
     registratoSnapshots,
     registratoResumos,
     dismissals: registratoSugestoesDispensa,
@@ -254,39 +259,32 @@ async function renderDashboard() {
     despesasFixas,
     lancamentos,
   });
-  const extratoContextRows = buildRegistratoContextRows(
-    registratoResumos,
-    [...new Set(extratoTransacoes.map(item => item?.mes).filter(Boolean))],
-    'extrato',
-  );
-  const lancamentosContextRows = buildRegistratoContextRows(
-    registratoResumos,
-    [...new Set(lancamentos.map(item => item?.fatura || item?.mes).filter(Boolean))],
-    'lancamentos',
-  );
   const projectionRecurringItems = buildProjectionRecurringItems(despesasFixas, assinaturas);
 
-  buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, extratoTransacoes, lancamentos, registratoInsights, cardBillSummaries);
-  buildAssinaturas(assinaturas, observacoes, lancamentos, extratoTransacoes, assinaturaSugestoesDispensa, transactionAliases);
+  buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, extratoTransacoesReconciled, lancamentos, registratoInsights, cardBillSummaries);
+  buildAssinaturas(assinaturas, observacoes, lancamentos, extratoTransacoesReconciled, assinaturaSugestoesDispensa, transactionAliases);
   buildDespesasFixas(despesasFixas, registratoSuggestions, transactionAliases);
   buildParcelamentos(despesasFixas, lancamentos, transactionAliases);
-  initLancamentos(lancamentos, extratoTransacoes, assinaturas, despesasFixas, {
+  initLancamentos(lancamentos, extratoTransacoesReconciled, assinaturas, despesasFixas, {
     analytics: spendAnalytics,
     cardBillSummaries,
     categorizationRules: categorizacaoRegras,
     categorizationMemories: categorizacaoMemoria,
-    registratoContextRows: lancamentosContextRows,
+    registratoContextRows: [],
     transactionAliases,
   });
-  initExtrato(extratoTransacoes, extratoSummary, {
+  initExtrato(extratoTransacoesReconciled, extratoSummary, {
     cardBillSummaries,
-    registratoContextRows: extratoContextRows,
+    registratoContextRows: [],
     registratoInsights,
     transactionAliases,
   });
   initProjecao(despesasFixas, extratoSummary, registratoInsights, {
     scrProjectionModel,
     parcelamentoSummary,
+    extratoTransacoes: extratoTransacoesReconciled,
+    cardBillSummaries,
+    recurringCommitments: projectionRecurringItems,
   });
   buildRegistrato(registratoResumos, registratoSnapshots, registratoSuggestions, registratoInsights);
   await buildImportar();

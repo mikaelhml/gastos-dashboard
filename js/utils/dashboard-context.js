@@ -70,7 +70,7 @@ function buildContextRowFromResumo(resumo, label, tableType) {
     data: `01/${mm}/${yyyy}`,
     desc: semRegistros
       ? 'Registrato SCR · Competência sem operações de crédito'
-      : 'Registrato SCR · Exposição informada sem limites',
+      : 'Registrato SCR · Contexto de crédito do período',
     cat: 'Contexto SCR',
     canal: 'outro',
     valor: exposure,

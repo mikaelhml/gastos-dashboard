@@ -59,6 +59,7 @@ export function isSpendTransaction(item) {
   if (item.source === 'conta') {
     if (item.tipo !== 'saida') return false;
     if (item.cat === 'Fatura Crédito') return false;
+    if (item.cat === 'Transferência própria') return false;
   }
 
   return true;

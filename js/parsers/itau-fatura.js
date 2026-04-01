@@ -1047,6 +1047,8 @@ function sanitizarDescricaoItau(rawDesc) {
     .replace(/\bTOTAL\s+DOS\s+PAGAMENTOS\b.*$/i, '')
     .replace(/\bPAGAMENTO\s+VIA\s+CONTA\b.*$/i, '')
     .replace(/\bLANCAMENTOS\s+PRODUTOS\s+E\s+SERVI[ÇC]OS\b.*$/i, '')
+    .replace(/\b(?:lanc)?amentos?\s+no\s+cart\s*[aã]?\s*o\b.*$/i, '')
+    .replace(/\b(?:lanc)?amentos?\s+atuais\b.*$/i, '')
     .replace(/\bANUIDADE\s+DIFERENCIADA\b.*$/i, '')
     .trim();
 

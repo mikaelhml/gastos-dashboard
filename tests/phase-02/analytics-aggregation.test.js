@@ -20,10 +20,11 @@ test('normalizeAnalyticsTransactions merges card fatura and account mes into a u
   ]);
 });
 
-test('isSpendTransaction excludes derived rows, non-saida account rows, and Fatura Crédito payments', () => {
+test('isSpendTransaction excludes derived rows, non-saida account rows, Fatura Crédito payments, and own transfers', () => {
   assert.equal(isSpendTransaction({ source: 'cartao', valor: 20, cat: 'Alimentação' }), true);
   assert.equal(isSpendTransaction({ source: 'conta', tipo: 'entrada', valor: 100, cat: 'Salário' }), false);
   assert.equal(isSpendTransaction({ source: 'conta', tipo: 'saida', valor: 300, cat: 'Fatura Crédito' }), false);
+  assert.equal(isSpendTransaction({ source: 'conta', tipo: 'saida', valor: 300, cat: 'Transferência própria' }), false);
   assert.equal(isSpendTransaction({ source: 'conta', tipo: 'saida', valor: 10, cat: 'Moradia', contextoDerivado: true }), false);
 });
 

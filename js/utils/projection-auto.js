@@ -1,6 +1,7 @@
 import { sortMonthLabels } from './analytics.js';
 import { buildTransactionAliasKey } from './display-names.js';
 import { inferirCanal } from './transaction-tags.js';
+import { isOwnTransferLike } from './self-transfer-detection.js';
 
 export function buildAutomaticProjectionInputs({
   extratoTransacoes = [],
@@ -227,6 +228,7 @@ function isEligibleIncomeGroup({ incomeKind = '', spread = 0 } = {}) {
 }
 
 function isSelfTransferLike(item = {}) {
+  if (isOwnTransferLike(item)) return true;
   const desc = normalizeText(item?.desc || '');
   const canal = inferirCanal(item);
   if (/\b(rendimento|resgate|invest|aplicacao)\b/.test(desc)) return true;

@@ -204,6 +204,7 @@ const CAT_COLORS = {
   'Associação':     { bg: '#1a3320', color: '#9ae6b4', border: '#22543d' },
   'Investimentos':  { bg: '#332200', color: '#d69e2e', border: '#744210' },
   'Transferência':  { bg: '#2d1f40', color: '#b794f4', border: '#553c9a' },
+  'Transferência própria': { bg: '#1f3147', color: '#90cdf4', border: '#2b6cb0' },
   'Contexto SCR':   { bg: '#2d1f4f', color: '#d6bcfa', border: '#6b46c1' },
 };
 
@@ -319,7 +320,7 @@ function renderLancamentos(data) {
       ? `<div class="cell-actions">
           ${isClassificado ? buildTipoBadge(l) : ''}
           <button type="button" class="btn-inline-secondary" data-open-convert-id="${l.id ?? ''}">
-            ${isClassificado ? 'Reclassificar' : 'Classificar'}
+            ${isClassificado ? 'Revisar vínculo' : 'Categoria e planejamento'}
           </button>
         </div>`
       : isClassificado
@@ -365,13 +366,20 @@ function renderLancamentos(data) {
   const nParc    = reais.filter(l => l.parcela).length;
   const nClass   = reais.filter(l => l.tipo_classificado).length;
   const nScr     = data.filter(l => l.contextoDerivado).length;
+  const totalLiquido = reais.reduce((sum, item) => {
+    const valor = Number(item.valor || 0);
+    if (!Number.isFinite(valor)) return sum;
+    if (item.source === 'conta' && item.tipo === 'entrada') return sum + valor;
+    return sum - valor;
+  }, 0);
   document.getElementById('lancamentosCount').innerHTML =
     `${reais.length} transaç${reais.length !== 1 ? 'ões' : 'ão'} reais &nbsp;·&nbsp; ` +
     `<span style="color:#7f9cf5">💳 ${nCartao} cartão</span> &nbsp;·&nbsp; ` +
     `<span style="color:#4fd1c5">🏦 ${nConta} conta</span>` +
     `${nScr ? ` &nbsp;·&nbsp; <span style="color:#b794f4">🏛️ ${nScr} linha(s) SCR</span>` : ''}` +
     `${nParc ? ` &nbsp;·&nbsp; 📦 ${nParc} parcelados` : ''}` +
-    `${nClass ? ` &nbsp;·&nbsp; ${nClass} classificados` : ''}`;
+    `${nClass ? ` &nbsp;·&nbsp; ${nClass} classificados` : ''}` +
+    ` &nbsp;·&nbsp; <span style="color:${totalLiquido >= 0 ? '#68d391' : '#fc8181'}">◆ Líquido ${totalLiquido >= 0 ? '+' : '-'}${fmt(Math.abs(totalLiquido))}</span>`;
 
   bindLancamentoRowInteractions(data);
   renderLancamentoDetailPanel(_lancamentos.find(item => String(item.id) === String(_activeLancamentoId)) || null);
@@ -447,13 +455,13 @@ function renderLancamentoDetailPanel(lancamento) {
       </div>
     </div>
     <div class="lancamentos-detail-actions">
-      <button type="button" class="btn-primary" id="detailClassifyLancamentoBtn">${lancamento.tipo_classificado ? 'Reclassificar' : 'Classificar'}</button>
+      <button type="button" class="btn-primary" id="detailClassifyLancamentoBtn">${lancamento.tipo_classificado ? 'Revisar vínculo' : 'Categoria e planejamento'}</button>
       <button type="button" class="btn-inline-secondary" id="detailEditLancamentoBtn">Editar lançamento</button>
       <button type="button" class="btn-inline-danger" id="detailDeleteLancamentoBtn">Excluir lançamento</button>
     </div>`;
 
   document.getElementById('detailClassifyLancamentoBtn')?.addEventListener('click', () => {
-    openConvertDialog(lancamento, lancamento.tipo_classificado || inferSuggestedAction(lancamento));
+    openConvertDialog(lancamento, lancamento.tipo_classificado || '');
   });
   document.getElementById('detailEditLancamentoBtn')?.addEventListener('click', () => {
     openEditDialog(lancamento);
@@ -655,6 +663,59 @@ function setCategorizationCategoryMode(mode, customValue = '') {
 function getCategorizationRuleCategoryValue() {
   const selectEl = document.getElementById('categorizationRuleCategorySelect');
   const customInput = document.getElementById('categorizationRuleCustomCategory');
+  if (!selectEl) return '';
+
+  if (selectEl.value === '__custom__') {
+    return normalizeCategoryText(customInput?.value || '');
+  }
+
+  return normalizeCategoryText(selectEl.value || '');
+}
+
+function populateConvertCategorySelect(selectedCategory = '') {
+  const selectEl = document.getElementById('convertCategoriaSelect');
+  if (!selectEl) return;
+
+  const normalizedSelected = normalizeCategoryText(selectedCategory);
+  const knownCategories = getKnownCategories();
+  const hasKnownMatch = normalizedSelected && knownCategories.includes(normalizedSelected);
+
+  selectEl.innerHTML = `
+    <option value="">Selecione uma categoria</option>
+    ${knownCategories.map(category => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join('')}
+    <option value="__custom__">+ Nova categoria</option>
+  `;
+
+  if (hasKnownMatch) {
+    selectEl.value = normalizedSelected;
+    setConvertCategoryMode('select', normalizedSelected);
+    return;
+  }
+
+  if (normalizedSelected) {
+    selectEl.value = '__custom__';
+    setConvertCategoryMode('custom', normalizedSelected);
+    return;
+  }
+
+  selectEl.value = '';
+  setConvertCategoryMode('select', '');
+}
+
+function setConvertCategoryMode(mode, customValue = '') {
+  const customField = document.getElementById('convertCategoriaCustomField');
+  const customInput = document.getElementById('convertCategoriaCustom');
+  if (!customField || !customInput) return;
+
+  const isCustom = mode === 'custom';
+  customField.style.display = isCustom ? '' : 'none';
+  customInput.required = isCustom;
+  customInput.value = isCustom ? customValue : '';
+}
+
+function getConvertCategoryValue() {
+  const selectEl = document.getElementById('convertCategoriaSelect');
+  const customInput = document.getElementById('convertCategoriaCustom');
   if (!selectEl) return '';
 
   if (selectEl.value === '__custom__') {
@@ -1205,7 +1266,7 @@ function bindActionButtons() {
       const rawId  = button.getAttribute('data-open-convert-id');
       const lancamento = _lancamentos.find(item => String(item.id) === String(rawId));
       if (!lancamento) return;
-      openConvertDialog(lancamento, lancamento.tipo_classificado || inferSuggestedAction(lancamento));
+      openConvertDialog(lancamento, lancamento.tipo_classificado || '');
     };
   });
 }
@@ -1220,6 +1281,7 @@ function bindConvertDialog() {
   const cancelBtn = document.getElementById('lancamentoConvertCancel');
   const submitBtn = document.getElementById('lancamentoConvertSubmit');
   const actionSelect = document.getElementById('convertActionSelect');
+  const categorySelect = document.getElementById('convertCategoriaSelect');
   if (!dialog || !form) return;
 
   const close = () => { dialog.close(); setFeedback('', '', 'lancamentoConvertFeedback'); };
@@ -1227,9 +1289,12 @@ function bindConvertDialog() {
   cancelBtn?.addEventListener('click', close);
   dialog.addEventListener('click', e => { if (e.target === dialog) close(); });
   actionSelect?.addEventListener('change', () => {
-    const action = actionSelect.value || 'despesa';
+    const action = actionSelect.value || '';
     document.getElementById('convertAction').value = action;
     syncConvertDialogState(action);
+  });
+  categorySelect?.addEventListener('change', () => {
+    setConvertCategoryMode(categorySelect.value === '__custom__' ? 'custom' : 'select');
   });
 
   form.addEventListener('submit', async e => {
@@ -1238,7 +1303,7 @@ function bindConvertDialog() {
     const action       = document.getElementById('convertAction').value;
     const icon         = document.getElementById('convertIcon')?.value || '💳';
     const nome         = document.getElementById('convertDescricao').value.trim();
-    const cat          = document.getElementById('convertCategoria').value.trim();
+    const cat          = getConvertCategoryValue();
     const valor        = parseFloat(document.getElementById('convertValor').value);
     const obs          = document.getElementById('convertObs').value.trim();
 
@@ -1297,15 +1362,20 @@ function bindConvertDialog() {
       const store = getStore(lancamento);
       const updated = prepareForDb({
         ...lancamento,
-        tipo_classificado: action,
-        classificado_nome: nome,
+        tipo_classificado: action || null,
+        classificado_nome: action ? nome : null,
       });
       await putItem(store, updated);
       await rememberLancamentoCategory(lancamento, cat, 'convert-dialog');
 
       const idx = _lancamentos.findIndex(l => String(l.id) === String(lancamentoId));
       if (idx !== -1) {
-        _lancamentos[idx] = { ..._lancamentos[idx], tipo_classificado: action, classificado_nome: nome };
+        _lancamentos[idx] = {
+          ..._lancamentos[idx],
+          cat,
+          tipo_classificado: action || null,
+          classificado_nome: action ? nome : null,
+        };
       }
 
       close();
@@ -1342,7 +1412,7 @@ function openConvertDialog(lancamento, action) {
   const actionSelect = document.getElementById('convertActionSelect');
   if (actionSelect) actionSelect.value = action;
   document.getElementById('convertDescricao').value = lancamento.desc || '';
-  document.getElementById('convertCategoria').value = lancamento.cat || '';
+  populateConvertCategorySelect(lancamento.cat || '');
   document.getElementById('convertValor').value = (lancamento.valor ?? '').toString();
   document.getElementById('convertObs').value = buildObsBase(lancamento);
 
@@ -1506,6 +1576,7 @@ function extrairParcelaPadrao(parcela, tipo) {
 }
 
 function getDialogTitle(action) {
+  if (!action) return 'Categoria e vínculo com planejamento';
   if (action === 'assinatura')   return 'Converter em assinatura';
   if (action === 'despesa')      return 'Converter em despesa fixa';
   if (action === 'despesa_variavel') return 'Converter em despesa recorrente variavel';
@@ -1514,6 +1585,7 @@ function getDialogTitle(action) {
 }
 
 function getDialogSubmitLabel(action) {
+  if (!action) return 'Salvar categoria';
   if (action === 'assinatura')   return 'Salvar assinatura';
   if (action === 'despesa')      return 'Salvar despesa fixa';
   if (action === 'despesa_variavel') return 'Salvar despesa variavel';
@@ -1527,7 +1599,7 @@ function syncConvertDialogState(action) {
     el.style.display = isParcelado ? '' : 'none';
   });
   const obsField = document.getElementById('convertObsField');
-  if (obsField) obsField.style.display = action === 'assinatura' ? 'none' : '';
+  if (obsField) obsField.style.display = !action || action === 'assinatura' ? 'none' : '';
   const iconField = document.getElementById('convertIconField');
   if (iconField) iconField.style.display = action === 'despesa' || action === 'despesa_variavel' || action === 'assinatura' ? '' : 'none';
 

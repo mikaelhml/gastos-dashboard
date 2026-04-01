@@ -281,11 +281,11 @@ function renderScrProjectionPanel() {
 
   summaryEl.innerHTML = `
     <div class="summary-bar" style="margin-top:8px">
-      <div class="sb-item"><span class="sb-label">Compromissos confirmados:</span><span class="sb-value" style="color:#90cdf4">${escapeHtml(fmt(totalCommitments))}</span></div>
+      <div class="sb-item"><span class="sb-label">Base fixa do mês:</span><span class="sb-value" style="color:#90cdf4">${escapeHtml(fmt(totalCommitments))}</span></div>
       <div class="divider"></div>
       <div class="sb-item"><span class="sb-label">Cartão médio:</span><span class="sb-value" style="color:#fc8181">${escapeHtml(fmt(autoInputs.itau || 0))}</span></div>
       <div class="divider"></div>
-      <div class="sb-item"><span class="sb-label">Variáveis estimadas:</span><span class="sb-value" style="color:#f6ad55">${escapeHtml(fmt(autoInputs.outros || 0))}</span></div>
+      <div class="sb-item"><span class="sb-label">Gastos variáveis:</span><span class="sb-value" style="color:#f6ad55">${escapeHtml(fmt(autoInputs.outros || 0))}</span></div>
       <div class="divider"></div>
       <div class="sb-item"><span class="sb-label">Resultado base:</span><span class="sb-value" style="color:${saldoMensalBase >= 0 ? '#68d391' : '#fc8181'}">${saldoMensalBase >= 0 ? '+' : ''}${escapeHtml(fmt(saldoMensalBase))}</span></div>
     </div>`;
@@ -298,7 +298,7 @@ function renderScrProjectionPanel() {
           <div>
             <strong style="color:#e2e8f0">O SCR não alterou a matemática da projeção</strong>
             <div style="margin-top:8px;color:#a0aec0;font-size:0.9rem">
-              Com os dados atuais, não houve compromisso do Registrato forte o bastante para entrar automaticamente no cálculo.
+              Com os dados atuais, não apareceu nenhum compromisso extra forte o bastante para entrar no cálculo.
             </div>
           </div>
           <div class="helper-badges">
@@ -313,35 +313,35 @@ function renderScrProjectionPanel() {
   trackerEl.innerHTML = `
     <div class="helper-panel-header">
       <div>
-        <h3>📦 Pressões recorrentes e parcelamentos</h3>
-        <p>Resumo rápido do que mais pesa mês a mês: compromissos fixos, parcelas ativas e leitura contextual do Registrato quando houver algo acionável.</p>
+        <h3>📦 O que pesa todo mês</h3>
+        <p>Resumo direto dos gastos recorrentes, financiamentos e parcelas que pressionam sua projeção.</p>
       </div>
       <button type="button" class="btn-inline-secondary" onclick="switchTab(null, 'despesas')">Abrir Despesas & Parcelas</button>
     </div>
     <div class="cards" style="margin-top:12px">
       <div class="card" style="--accent:#7cc7ff">
-        <div class="label">📌 Fixos + assinaturas</div>
+        <div class="label">📌 Gastos recorrentes</div>
         <div class="value">${escapeHtml(fmt(_fixoMensal.total || 0))}</div>
-        <div class="sub">Base confirmada que entra antes do cartão e dos variáveis.</div>
+        <div class="sub">Total mensal de despesas já cadastradas e assinaturas ativas.</div>
         <div class="sub" style="margin-top:6px;color:#90cdf4">${_despesasFixas.length} item(ns) programado(s)</div>
       </div>
       <div class="card" style="--accent:#63b3ed">
         <div class="label">🏦 Financiamentos ativos</div>
         <div class="value">${_parcelamentoSummary.financiamentos.ativos}</div>
-        <div class="sub">${escapeHtml(fmt(_parcelamentoSummary.financiamentos.totalMensal))}/mês · saldo ${escapeHtml(fmt(_parcelamentoSummary.financiamentos.saldoDevedor))}</div>
+        <div class="sub">${escapeHtml(fmt(_parcelamentoSummary.financiamentos.totalMensal))}/mês · saldo restante ${escapeHtml(fmt(_parcelamentoSummary.financiamentos.saldoDevedor))}</div>
         <div class="sub" style="margin-top:6px;color:#90cdf4">Próximo término: ${escapeHtml(_parcelamentoSummary.financiamentos.proximoTermino || '—')}</div>
       </div>
       <div class="card" style="--accent:#f6ad55">
         <div class="label">💳 Parcelas no cartão</div>
         <div class="value">${_parcelamentoSummary.cartaoParcelado.ativos}</div>
-        <div class="sub">${escapeHtml(fmt(_parcelamentoSummary.cartaoParcelado.totalMensal))}/mês · saldo ${escapeHtml(fmt(_parcelamentoSummary.cartaoParcelado.saldoRestante))}</div>
+        <div class="sub">${escapeHtml(fmt(_parcelamentoSummary.cartaoParcelado.totalMensal))}/mês · saldo restante ${escapeHtml(fmt(_parcelamentoSummary.cartaoParcelado.saldoRestante))}</div>
         <div class="sub" style="margin-top:6px;color:#fbd38d">Próximo término: ${escapeHtml(_parcelamentoSummary.cartaoParcelado.proximoTermino || '—')}</div>
       </div>
       <div class="card" style="--accent:#b794f4">
-        <div class="label">🏛️ Contexto SCR</div>
-        <div class="value">${totals.includedCount || 0}</div>
-        <div class="sub">${escapeHtml(fmt(totals.includedMonthlyTotal || 0))}/mês entrou automaticamente.</div>
-        <div class="sub" style="margin-top:6px;color:#d6bcfa">${totals.conflictCount} conflito(s) · ${totals.contextualCount} contextual(is)</div>
+        <div class="label">🏛️ Compromissos extras</div>
+        <div class="value">${escapeHtml(fmt(totals.includedMonthlyTotal || 0))}</div>
+        <div class="sub">${totals.includedCount || 0} item(ns) entraram automaticamente no cálculo.</div>
+        <div class="sub" style="margin-top:6px;color:#d6bcfa">${totals.conflictCount} conflito(s) · ${totals.contextualCount} só para contexto</div>
       </div>
     </div>`;
 }

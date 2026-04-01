@@ -377,6 +377,42 @@ function renderExtrato(data) {
           <td data-label="Valor" style="text-align:right;font-weight:600;color:${color}">${sign} ${fmt(t.valor)}</td>
         </tr>`;
     });
+
+    const reaisFiltrados = data.filter(t => !t.contextoDerivado);
+    const totalEntradasFiltrado = reaisFiltrados
+      .filter(item => item.tipo === 'entrada')
+      .reduce((sum, item) => sum + Number(item.valor || 0), 0);
+    const totalSaidasFiltrado = reaisFiltrados
+      .filter(item => item.tipo === 'saida')
+      .reduce((sum, item) => sum + Number(item.valor || 0), 0);
+    const totalLiquidoFiltrado = reaisFiltrados.reduce((sum, item) => {
+      const valor = Number(item.valor || 0);
+      if (!Number.isFinite(valor)) return sum;
+      return sum + (item.tipo === 'entrada' ? valor : -valor);
+    }, 0);
+    const totalLiquidoColor = totalLiquidoFiltrado >= 0 ? '#68d391' : '#fc8181';
+
+    tbody.innerHTML += `
+      <tr class="total-row">
+        <td colspan="5"><strong>TOTAL DE ENTRADAS DO FILTRO</strong></td>
+        <td style="text-align:right">
+          <strong style="color:#68d391">+${escapeHtml(fmt(totalEntradasFiltrado))}</strong>
+        </td>
+      </tr>
+      <tr class="total-row">
+        <td colspan="5"><strong>TOTAL DE SAÍDAS DO FILTRO</strong></td>
+        <td style="text-align:right">
+          <strong style="color:#fc8181">-${escapeHtml(fmt(totalSaidasFiltrado))}</strong>
+        </td>
+      </tr>
+      <tr class="total-row">
+        <td colspan="5"><strong>TOTAL LÍQUIDO DO FILTRO</strong></td>
+        <td style="text-align:right">
+          <strong style="color:${totalLiquidoColor}">
+            ${totalLiquidoFiltrado >= 0 ? '+' : '-'}${escapeHtml(fmt(Math.abs(totalLiquidoFiltrado)))}
+          </strong>
+        </td>
+      </tr>`;
   }
 
   const reais = data.filter(t => !t.contextoDerivado);
@@ -387,7 +423,8 @@ function renderExtrato(data) {
     `${reais.length} movimentaç${reais.length === 1 ? 'ão' : 'ões'} reais` +
     `${contextos ? ` &nbsp;·&nbsp; <span style="color:#b794f4">🏛️ ${contextos} linha(s) SCR</span>` : ''} · ` +
     `<span style="color:#68d391">▲ Entradas: ${fmt(totalE)}</span> &nbsp;·&nbsp; ` +
-    `<span style="color:#fc8181">▼ Saídas: ${fmt(totalS)}</span>`;
+    `<span style="color:#fc8181">▼ Saídas: ${fmt(totalS)}</span> &nbsp;·&nbsp; ` +
+    `<span style="color:${totalE - totalS >= 0 ? '#68d391' : '#fc8181'}">◆ Líquido: ${totalE - totalS >= 0 ? '+' : '-'}${fmt(Math.abs(totalE - totalS))}</span>`;
 }
 
 function buildExtratoContextPanel(cardBillSummaries, registratoInsights, contextRows) {
@@ -415,7 +452,6 @@ function buildExtratoContextPanel(cardBillSummaries, registratoInsights, context
     <div class="helper-badges">
       ${ultimaFatura ? `<span class="badge badge-red">💳 Última fatura ${escapeHtml(ultimaFatura.fatura)} · ${escapeHtml(fmt(ultimaFatura.total))}</span>` : ''}
       ${Number(totalCartao) > 0 ? `<span class="badge badge-blue">🧾 Total importado em cartão · ${escapeHtml(fmt(totalCartao))}</span>` : ''}
-      ${registratoInsights ? `<span class="badge badge-purple">🏛️ SCR sem limites · ${escapeHtml(fmt(registratoInsights.exposicaoTotal || 0))}</span>` : ''}
       ${linhasScr ? `<span class="badge badge-purple">🔎 ${linhasScr} linha(s) derivada(s) do SCR no período do extrato</span>` : ''}
     </div>
   `;

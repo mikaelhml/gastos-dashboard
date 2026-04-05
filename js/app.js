@@ -29,6 +29,8 @@ import { buildSpendAnalytics } from './utils/analytics.js';
 import { buildScrProjectionModel } from './utils/projection-model.js';
 import { buildAutomaticProjectionInputs } from './utils/projection-auto.js';
 import { buildFinancialAnalysisModel } from './utils/financial-analysis.js';
+import { computeMarketKpis } from './utils/kpi-market.js';
+import { generateContextualAlerts } from './utils/alert-engine.js';
 import { buildParcelamentoSummary } from './utils/parcelamento-summary.js';
 import { reconcileAccountCardPayments } from './utils/card-payment-reconciliation.js';
 import { normalizeOwnTransfers } from './utils/self-transfer-detection.js';
@@ -286,12 +288,32 @@ async function renderDashboard() {
     automaticProjection,
   });
 
+  const marketKpis = computeMarketKpis({
+    budget: financialAnalysis.budget,
+    debt: financialAnalysis.debt,
+    cashflow: financialAnalysis.cashflow,
+    spending: financialAnalysis.spending,
+  });
+  const contextualAlerts = generateContextualAlerts({
+    budget: financialAnalysis.budget,
+    debt: financialAnalysis.debt,
+    spending: financialAnalysis.spending,
+    cashflow: financialAnalysis.cashflow,
+    healthScore: financialAnalysis.healthScore,
+  });
+
   buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, extratoTransacoesReconciled, lancamentos, registratoInsights, cardBillSummaries, {
     financialAnalysis,
+    marketKpis,
+    contextualAlerts,
+    automaticProjection,
   });
   buildAnaliseFinanceira(financialAnalysis, {
     automaticProjection,
     scrProjectionModel,
+    cardBillSummaries,
+    marketKpis,
+    contextualAlerts,
   });
   buildAssinaturas(assinaturas, observacoes, lancamentos, extratoTransacoesReconciled, assinaturaSugestoesDispensa, transactionAliases);
   buildDespesasFixas(despesasFixas, registratoSuggestions, transactionAliases);
@@ -395,12 +417,32 @@ async function renderRegistratoSurfaces() {
     automaticProjection,
   });
 
+  const marketKpis = computeMarketKpis({
+    budget: financialAnalysis.budget,
+    debt: financialAnalysis.debt,
+    cashflow: financialAnalysis.cashflow,
+    spending: financialAnalysis.spending,
+  });
+  const contextualAlerts = generateContextualAlerts({
+    budget: financialAnalysis.budget,
+    debt: financialAnalysis.debt,
+    spending: financialAnalysis.spending,
+    cashflow: financialAnalysis.cashflow,
+    healthScore: financialAnalysis.healthScore,
+  });
+
   buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, extratoTransacoesReconciled, lancamentos, registratoInsights, cardBillSummaries, {
     financialAnalysis,
+    marketKpis,
+    contextualAlerts,
+    automaticProjection,
   });
   buildAnaliseFinanceira(financialAnalysis, {
     automaticProjection,
     scrProjectionModel,
+    cardBillSummaries,
+    marketKpis,
+    contextualAlerts,
   });
   buildDespesasFixas(despesasFixas, registratoSuggestions, transactionAliases);
   buildParcelamentos(despesasFixas, lancamentos, transactionAliases);

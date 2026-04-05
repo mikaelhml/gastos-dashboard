@@ -1,5 +1,7 @@
 import { fmt } from '../utils/formatters.js';
 import { escapeHtml } from '../utils/dom.js';
+import { simulateInstallmentPurchase, computePurchaseImpact } from '../utils/purchase-simulator.js';
+import { fmtCurrency } from '../utils/financial-analysis.js';
 
 const EMPTY_STATUS = {
   tone: 'neutral',
@@ -52,6 +54,12 @@ export function buildAnaliseFinanceira(financialAnalysis = null, options = {}) {
 
   const viewModel = buildAnalysisSurfaceViewModel(financialAnalysis, options);
   host.innerHTML = renderAnalysisSurface(viewModel);
+
+  buildScrEvolutionChart(financialAnalysis, options);
+  buildInvoiceEvolutionChart(options);
+  buildExpenseDonutChart(financialAnalysis);
+  buildAnnualProjectionTable(financialAnalysis, options);
+  buildPurchaseSimulatorUI(financialAnalysis);
 }
 
 function renderAnalysisSurface(viewModel) {
@@ -404,4 +412,215 @@ function formatConflictSummary(simulation = {}) {
   const count = Number(simulation?.conflictCount || 0);
   if (!count) return '0 conflito';
   return `${count} conflito${count > 1 ? 's' : ''}`;
+}
+
+// ── Phase 01: Charts, Annual Projection Table, Purchase Simulator ───────
+
+const CAT_PALETTE_ANALISE = [
+  '#63b3ed','#68d391','#f6e05e','#f687b3','#fc8181',
+  '#b794f4','#76e4f7','#f6ad55','#9ae6b4','#fbb6ce','#a0aec0',
+];
+
+let _chartScrEvolution = null;
+let _chartInvoiceEvolution = null;
+let _chartExpenseDonut = null;
+
+function buildScrEvolutionChart(financialAnalysis, options) {
+  if (_chartScrEvolution) { _chartScrEvolution.destroy(); _chartScrEvolution = null; }
+  const ctx = document.getElementById('chartScrEvolution');
+  if (!ctx) return;
+
+  const scrData = options?.scrProjectionModel?.monthlyHistory || [];
+  if (!scrData.length) return;
+
+  const labels = scrData.map(d => d.mesRef || '');
+  const emDia = scrData.map(d => Number(d.emDia) || 0);
+  const vencida = scrData.map(d => Number(d.vencida) || 0);
+
+  _chartScrEvolution = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Em dia', data: emDia, borderColor: '#63b3ed', backgroundColor: '#63b3ed22', tension: 0.3, pointRadius: 3, fill: false },
+        { label: 'Vencida', data: vencida, borderColor: '#fc8181', backgroundColor: '#fc818122', tension: 0.3, pointRadius: 3, fill: false },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: '#a0aec0', font: { size: 10 } } } },
+      scales: {
+        x: { ticks: { color: '#a0aec0' }, grid: { color: '#2d3748' } },
+        y: { ticks: { color: '#a0aec0', callback: v => 'R$' + (v / 1000).toFixed(1) + 'k' }, grid: { color: '#2d3748' } },
+      },
+    },
+  });
+}
+
+function buildInvoiceEvolutionChart(options) {
+  if (_chartInvoiceEvolution) { _chartInvoiceEvolution.destroy(); _chartInvoiceEvolution = null; }
+  const ctx = document.getElementById('chartInvoiceEvolution');
+  if (!ctx) return;
+
+  const bills = options?.cardBillSummaries || [];
+  if (!bills.length) return;
+
+  const sorted = [...bills].sort((a, b) => String(a.fatura || '').localeCompare(String(b.fatura || '')));
+  const labels = sorted.map(b => b.fatura || '');
+  const totals = sorted.map(b => Number(b.total) || 0);
+
+  _chartInvoiceEvolution = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Faturas',
+        data: totals,
+        borderColor: '#f6ad55',
+        backgroundColor: '#f6ad5522',
+        tension: 0.3,
+        pointRadius: 3,
+        fill: true,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: '#a0aec0', font: { size: 10 } } } },
+      scales: {
+        x: { ticks: { color: '#a0aec0' }, grid: { color: '#2d3748' } },
+        y: { ticks: { color: '#a0aec0', callback: v => 'R$' + (v / 1000).toFixed(1) + 'k' }, grid: { color: '#2d3748' } },
+      },
+    },
+  });
+}
+
+function buildExpenseDonutChart(financialAnalysis) {
+  if (_chartExpenseDonut) { _chartExpenseDonut.destroy(); _chartExpenseDonut = null; }
+  const ctx = document.getElementById('chartExpenseDonut');
+  if (!ctx) return;
+
+  const topCats = financialAnalysis?.spending?.topCategories || [];
+  if (!topCats.length) return;
+
+  _chartExpenseDonut = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: topCats.map(c => c.cat || 'Outros'),
+      datasets: [{
+        data: topCats.map(c => c.total || 0),
+        backgroundColor: CAT_PALETTE_ANALISE.slice(0, topCats.length),
+        borderWidth: 0,
+      }],
+    },
+    options: {
+      responsive: true,
+      cutout: '60%',
+      plugins: {
+        legend: { position: 'right', labels: { color: '#a0aec0', font: { size: 11 }, boxWidth: 14 } },
+        tooltip: { callbacks: { label: c => ` ${c.label}: ${fmt(c.raw)}` } },
+      },
+    },
+  });
+}
+
+function buildAnnualProjectionTable(financialAnalysis, options) {
+  const container = document.getElementById('annualProjectionTable');
+  if (!container) return;
+
+  const budget = financialAnalysis?.budget || {};
+  const income = Number(budget.estimatedIncome) || 0;
+  const fixed = Number(budget.recurringWithCredit) || 0;
+  const variable = Number(budget.variableSpendEstimate) || 0;
+  const free = Number(budget.freeBudgetEstimate) || 0;
+
+  if (income <= 0 && fixed <= 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const now = new Date();
+  const rows = [];
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const label = d.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
+    const isCurrent = i === 0;
+    rows.push({ label, income, fixed, parcelas: 0, variable, free, isCurrent });
+  }
+
+  container.innerHTML = `
+    <table>
+      <thead>
+        <tr><th>Mês</th><th>Renda</th><th>Fixos</th><th>Variáveis</th><th>Saldo Livre</th></tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr${r.isCurrent ? ' style="background:#2d3748"' : ''}>
+            <td>${escapeHtml(r.label)}</td>
+            <td>${escapeHtml(fmt(r.income))}</td>
+            <td>${escapeHtml(fmt(r.fixed))}</td>
+            <td>${escapeHtml(fmt(r.variable))}</td>
+            <td style="color:${r.free >= 0 ? '#68d391' : '#fc8181'}">${escapeHtml(fmt(r.free))}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>`;
+}
+
+function buildPurchaseSimulatorUI(financialAnalysis) {
+  const btn = document.getElementById('simCalculateBtn');
+  if (!btn) return;
+
+  const budget = financialAnalysis?.budget || {};
+
+  function calculate() {
+    const totalValue = parseFloat(document.getElementById('simTotalValue')?.value);
+    const installments = parseInt(document.getElementById('simInstallments')?.value, 10);
+    const monthlyInterestRate = parseFloat(document.getElementById('simInterestRate')?.value) || 0;
+    const resultsEl = document.getElementById('simResults');
+    if (!resultsEl) return;
+
+    if (!Number.isFinite(totalValue) || !Number.isFinite(installments) || totalValue <= 0 || installments <= 0) {
+      resultsEl.innerHTML = '<div class="info-panel info-panel-primary"><div class="info-panel-body">Preencha valor e parcelas para simular.</div></div>';
+      return;
+    }
+
+    const sim = simulateInstallmentPurchase({ totalValue, installments, monthlyInterestRate });
+    if (!sim) {
+      resultsEl.innerHTML = '<div class="info-panel info-panel-primary"><div class="info-panel-body">Valores inválidos. Verifique os campos.</div></div>';
+      return;
+    }
+
+    const impact = computePurchaseImpact({
+      monthlyPayment: sim.monthlyPayment,
+      freeBudgetEstimate: Number(budget.freeBudgetEstimate) || 0,
+      estimatedIncome: Number(budget.estimatedIncome) || 0,
+    });
+
+    resultsEl.innerHTML = `
+      <div class="sim-result-grid">
+        <div class="card" style="--accent:#63b3ed"><div class="label">Parcela mensal</div><div class="value" style="color:#63b3ed">${escapeHtml(fmtCurrency(sim.monthlyPayment))}</div></div>
+        <div class="card" style="--accent:#f6ad55"><div class="label">Custo total</div><div class="value" style="color:#f6ad55">${escapeHtml(fmtCurrency(sim.totalPaid))}</div></div>
+        <div class="card" style="--accent:#fc8181"><div class="label">Juros total</div><div class="value" style="color:#fc8181">${escapeHtml(fmtCurrency(sim.totalInterest))}</div></div>
+        <div class="card" style="--accent:#b794f4"><div class="label">Taxa efetiva</div><div class="value" style="color:#b794f4">${escapeHtml(Math.round(sim.effectiveRate * 100) + '%')}</div></div>
+      </div>
+      <div class="sim-impact ${impact.viable ? 'viable' : 'not-viable'}">
+        <strong>Impacto:</strong> Margem livre passaria de ${escapeHtml(fmtCurrency(budget.freeBudgetEstimate || 0))} para ${escapeHtml(fmtCurrency(impact.newFreeBalance))}
+        (${escapeHtml(Math.round(impact.paymentAsPercentOfFree * 100) + '%')} da margem, ${escapeHtml(Math.round(impact.paymentAsPercentOfIncome * 100) + '%')} da renda)
+        ${impact.viable ? '— <strong style="color:#276749">Viável</strong>' : '— <strong style="color:#c53030">Comprometeria o saldo</strong>'}
+      </div>`;
+  }
+
+  btn.addEventListener('click', calculate);
+
+  // Real-time recalculation with debounce
+  let debounceTimer = null;
+  ['simTotalValue', 'simInstallments', 'simInterestRate'].forEach(id => {
+    const input = document.getElementById(id);
+    if (input) {
+      input.addEventListener('input', () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(calculate, 300);
+      });
+    }
+  });
 }

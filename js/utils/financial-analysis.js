@@ -1,13 +1,13 @@
-function toNumber(value) {
+export function toNumber(value) {
   const amount = Number(value);
   return Number.isFinite(amount) ? amount : 0;
 }
 
-function roundMoney(value) {
+export function roundMoney(value) {
   return Number(toNumber(value).toFixed(2));
 }
 
-function fmtCurrency(value) {
+export function fmtCurrency(value) {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
@@ -22,7 +22,7 @@ function average(values = []) {
   return roundMoney(numbers.reduce((sum, value) => sum + value, 0) / numbers.length);
 }
 
-function percentage(value, total) {
+export function percentage(value, total) {
   if (toNumber(total) <= 0) return 0;
   return Number((toNumber(value) / toNumber(total)).toFixed(4));
 }
@@ -322,6 +322,116 @@ function buildSummaryCards({ budget, debt, spending, cashflow }) {
   ];
 }
 
+export function buildHealthScore({ budget = {}, debt = {}, cashflow = {} } = {}) {
+  const pressure = toNumber(budget.pressureRatio);
+  const free = toNumber(budget.freeBudgetEstimate);
+  const income = toNumber(budget.estimatedIncome);
+  const totalExposure = toNumber(debt.totalExposure);
+  const overdue = toNumber(debt.overdue);
+  const avgNet = toNumber(cashflow.averageNet);
+
+  let score = 50;
+
+  // Budget pressure scoring (only when income data exists)
+  if (income > 0) {
+    if (pressure < 0.7) score += 25;
+    else if (pressure < 0.85) score += 15;
+    else if (pressure < 1.0) score += 5;
+    else score -= 10; // over-budget penalty
+  }
+
+  // Debt scoring
+  if (totalExposure > 0 || overdue > 0) {
+    if (overdue <= 0) score += 15;
+    else score -= 15;
+  }
+
+  // Cashflow scoring
+  if (avgNet > 0) score += 15;
+  else if (avgNet < 0 && avgNet > -500) score += 5;
+
+  // Free budget scoring (only when income data exists)
+  if (income > 0 && free > income * 0.2) score += 10;
+  else if (income > 0 && free > 0) score += 5;
+
+  score = Math.max(0, Math.min(100, score));
+
+  const label = score >= 70 ? 'Saudavel' : score >= 40 ? 'Atencao' : 'Critico';
+  const tone = score >= 70 ? 'healthy' : score >= 40 ? 'attention' : 'critical';
+  const emoji = score >= 70 ? '💚' : score >= 40 ? '💛' : '❤️';
+
+  return { score, label, emoji, tone };
+}
+
+export function buildInstallmentRelief(despesasFixas = []) {
+  const parcelas = (despesasFixas || []).filter(
+    item => item?.parcelaAtual != null && item?.totalParcelas != null
+  );
+
+  if (!parcelas.length) {
+    return { activeParcelas: 0, totalMonthly: 0, totalRemaining: 0, reliefDate: null, monthlySavingsAfterRelief: 0 };
+  }
+
+  let totalMonthly = 0;
+  let totalRemaining = 0;
+  let maxRemainingMonths = 0;
+  const parcelaDetails = [];
+
+  for (const item of parcelas) {
+    const monthly = roundMoney(toNumber(item.valorMensal) || toNumber(item.valor));
+    const remaining = Math.max(0, toNumber(item.totalParcelas) - toNumber(item.parcelaAtual));
+    totalMonthly += monthly;
+    totalRemaining += roundMoney(remaining * monthly);
+    parcelaDetails.push({ monthly, remaining });
+    if (remaining > maxRemainingMonths) maxRemainingMonths = remaining;
+  }
+
+  totalMonthly = roundMoney(totalMonthly);
+  totalRemaining = roundMoney(totalRemaining);
+
+  // Compute relief date
+  let reliefDate = null;
+  if (maxRemainingMonths > 0) {
+    const now = new Date();
+    const target = new Date(now.getFullYear(), now.getMonth() + maxRemainingMonths, 1);
+    reliefDate = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  // Monthly savings after relief = sum of parcelas ending at max remaining
+  const monthlySavingsAfterRelief = roundMoney(
+    parcelaDetails
+      .filter(p => p.remaining === maxRemainingMonths)
+      .reduce((sum, p) => sum + p.monthly, 0)
+  );
+
+  return { activeParcelas: parcelas.length, totalMonthly, totalRemaining, reliefDate, monthlySavingsAfterRelief };
+}
+
+export function buildConsolidatedDebt({ debt = {}, despesasFixas = [] } = {}) {
+  const scrExposure = toNumber(debt.totalExposure);
+  const overdueAmount = toNumber(debt.overdue);
+
+  const financingItems = (despesasFixas || []).filter(item => {
+    const tipo = String(item?.tipo || '').toLowerCase();
+    return tipo.includes('financiamento') || tipo.includes('emprestimo');
+  });
+
+  const financingTotal = roundMoney(
+    financingItems.reduce((sum, item) => {
+      const monthly = toNumber(item.valorMensal) || toNumber(item.valor);
+      const remaining = Math.max(0, toNumber(item.totalParcelas) - toNumber(item.parcelaAtual));
+      return sum + monthly * remaining;
+    }, 0)
+  );
+
+  return {
+    total: roundMoney(scrExposure + financingTotal),
+    scrExposure,
+    financingTotal,
+    overdueAmount,
+  };
+}
+
 export function buildFinancialAnalysisModel({
   assinaturas = [],
   despesasFixas = [],
@@ -365,5 +475,8 @@ export function buildFinancialAnalysisModel({
     highlights,
     narrative,
     summaryCards: buildSummaryCards({ budget, debt, spending, cashflow }),
+    healthScore: buildHealthScore({ budget, debt, cashflow }),
+    installmentRelief: buildInstallmentRelief(despesasFixas),
+    consolidatedDebt: buildConsolidatedDebt({ debt, despesasFixas }),
   };
 }

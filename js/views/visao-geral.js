@@ -1,6 +1,7 @@
 import { fmt } from '../utils/formatters.js';
 import { escapeHtml } from '../utils/dom.js';
 import { buildEmptyStateViewModels } from '../utils/empty-states.js';
+import { fmtCurrency } from '../utils/financial-analysis.js';
 
 let _chartDespesas = null;
 let _chartSubs     = null;
@@ -30,6 +31,10 @@ export function buildVisaoGeral(assinaturas, despesasFixas, extratoSummary, tran
   buildCharts(assinaturas, despesasFixas);
   buildNewKpiCards(summaryReal, lancamentos, registratoInsights);
   renderFinancialOverviewPanel(options?.financialAnalysis || null);
+  renderEnrichedKpiCards(options?.financialAnalysis || null);
+  renderMarketKpiCards(options?.marketKpis || null);
+  renderProjectionNextMonth(options?.financialAnalysis || null, options);
+  renderContextualAlerts(options?.contextualAlerts || []);
   buildRenovacaoAlerta(assinaturas);
 
   if (emptyStates.overview.shouldRender) {
@@ -618,3 +623,206 @@ function buildResumoTable(totals, assinaturas, despesasFixas) {
   if (totalEl) totalEl.textContent = fmt(totals.total);
   if (anualEl) anualEl.textContent  = fmt(totals.total * 12);
 }
+
+// ── Enriched KPI Cards ──────────────────────────────────────────────────────
+
+let _storedFinancialAnalysis = null;
+let _storedMarketKpis = null;
+
+function renderEnrichedKpiCards(financialAnalysis) {
+  _storedFinancialAnalysis = financialAnalysis;
+  const container = document.getElementById('kpiEnrichedCards');
+  if (!container || !financialAnalysis) { if (container) container.innerHTML = ''; return; }
+
+  const { healthScore, budget, installmentRelief, consolidatedDebt } = financialAnalysis;
+  const hs = healthScore || {};
+  const b = budget || {};
+  const ir = installmentRelief || {};
+  const cd = consolidatedDebt || {};
+
+  const toneColor = (tone) => tone === 'healthy' ? '#68d391' : tone === 'critical' ? '#fc8181' : '#f6ad55';
+  const progressColor = (ratio) => ratio > 1 ? '#fc8181' : ratio > 0.85 ? '#f6ad55' : '#68d391';
+  const pctBar = (ratio, color) => `<div class="progress-wrap" style="margin-top:6px"><div class="progress-bar" style="width:${Math.min(ratio * 100, 100)}%;background:${color}"></div></div>`;
+
+  const income = Number(b.estimatedIncome) || 0;
+  const freeRatio = income > 0 ? Math.max(0, (Number(b.freeBudgetEstimate) || 0) / income) : 0;
+  const commitRatio = Number(b.commitmentRatio) || 0;
+
+  container.innerHTML = `
+    <div class="card" data-kpi-detail="healthScore" style="--accent:${toneColor(hs.tone)}">
+      <div class="label"><span class="card-icon">${hs.emoji || '💚'}</span>Saúde Financeira</div>
+      <div class="value" style="color:${toneColor(hs.tone)}">${hs.score ?? 50}/100</div>
+      <div class="sub">${escapeHtml(hs.label || 'Atencao')}</div>
+      ${pctBar((hs.score || 50) / 100, toneColor(hs.tone))}
+    </div>
+    <div class="card" data-kpi-detail="margemLivre" style="--accent:${(b.freeBudgetEstimate || 0) >= 0 ? '#68d391' : '#fc8181'}">
+      <div class="label"><span class="card-icon">💰</span>Margem Livre</div>
+      <div class="value" style="color:${(b.freeBudgetEstimate || 0) >= 0 ? '#68d391' : '#fc8181'}">${fmtCurrency(b.freeBudgetEstimate || 0)}</div>
+      <div class="sub">${income > 0 ? Math.round(freeRatio * 100) + '% da renda' : 'Sem renda estimada'}</div>
+      ${pctBar(Math.min(freeRatio, 1), (b.freeBudgetEstimate || 0) >= 0 ? '#68d391' : '#fc8181')}
+    </div>
+    <div class="card" data-kpi-detail="parcelasAtivas" style="--accent:#b794f4">
+      <div class="label"><span class="card-icon">📅</span>Parcelas Ativas</div>
+      <div class="value" style="color:#b794f4">${ir.activeParcelas || 0}</div>
+      <div class="sub">${fmtCurrency(ir.totalMonthly || 0)}/mês${ir.reliefDate ? ' · Alívio em ' + escapeHtml(ir.reliefDate) : ''}</div>
+    </div>
+    <div class="card" data-kpi-detail="dividaConsolidada" style="--accent:#f6ad55">
+      <div class="label"><span class="card-icon">🏦</span>Dívida Consolidada</div>
+      <div class="value" style="color:#f6ad55">${fmtCurrency(cd.total || 0)}</div>
+      <div class="sub">SCR ${fmtCurrency(cd.scrExposure || 0)} + Financ. ${fmtCurrency(cd.financingTotal || 0)}</div>
+    </div>
+    <div class="card" data-kpi-detail="comprometimentoRenda" style="--accent:${progressColor(commitRatio)}">
+      <div class="label"><span class="card-icon">📊</span>Comprometimento</div>
+      <div class="value" style="color:${progressColor(commitRatio)}">${Math.round(commitRatio * 100)}%</div>
+      <div class="sub">da renda comprometida</div>
+      ${pctBar(commitRatio, progressColor(commitRatio))}
+    </div>
+  `;
+}
+
+function renderMarketKpiCards(marketKpis) {
+  _storedMarketKpis = marketKpis;
+  const container = document.getElementById('kpiMarketCards');
+  if (!container || !marketKpis) { if (container) container.innerHTML = ''; return; }
+
+  const m = marketKpis;
+  const items = [
+    { icon: '💎', label: 'Patrimônio Líquido', value: fmtCurrency(m.netWorth), sub: m._partial ? 'Visível (parcial)' : '', color: m.netWorth >= 0 ? '#68d391' : '#fc8181' },
+    { icon: '💰', label: 'Taxa de Poupança', value: Math.round(m.savingsRate * 100) + '%', sub: 'da renda', color: m.savingsRate >= 0.2 ? '#68d391' : m.savingsRate >= 0.1 ? '#f6e05e' : '#fc8181' },
+    { icon: '📉', label: 'Dívida/Renda', value: Math.round(m.debtToIncome * 100) + '%', sub: 'anual', color: m.debtToIncome <= 0.3 ? '#68d391' : m.debtToIncome <= 0.5 ? '#f6e05e' : '#fc8181' },
+    { icon: '🛡️', label: 'Reserva Emergência', value: m.emergencyFundCoverage.toFixed(1) + ' meses', sub: '', color: m.emergencyFundCoverage >= 6 ? '#68d391' : m.emergencyFundCoverage >= 3 ? '#f6e05e' : '#fc8181' },
+    { icon: '⚡', label: 'Velocidade de Gasto', value: fmtCurrency(m.spendingVelocity) + '/dia', sub: '', color: '#76e4f7' },
+    { icon: '⏳', label: 'Cash Runway', value: m.cashRunway.toFixed(1) + ' meses', sub: '', color: m.cashRunway >= 6 ? '#68d391' : m.cashRunway >= 3 ? '#f6e05e' : '#fc8181' },
+  ];
+
+  container.innerHTML = items.map(item => `
+    <div class="card" style="--accent:${item.color}">
+      <div class="label"><span class="card-icon">${item.icon}</span>${escapeHtml(item.label)}</div>
+      <div class="value" style="color:${item.color};font-size:1.1rem">${escapeHtml(item.value)}</div>
+      ${item.sub ? `<div class="sub">${escapeHtml(item.sub)}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function renderProjectionNextMonth(financialAnalysis, options) {
+  const container = document.getElementById('projectionNextMonth');
+  if (!container) return;
+
+  const ap = options?.automaticProjection;
+  const b = financialAnalysis?.budget;
+  if (!ap || !b) { container.style.display = 'none'; return; }
+
+  const income = Number(b.estimatedIncome) || 0;
+  const fixed = Number(b.recurringWithCredit) || 0;
+  const variable = Number(b.variableSpendEstimate) || 0;
+  const free = Number(b.freeBudgetEstimate) || 0;
+
+  container.style.display = '';
+  container.innerHTML = `
+    <div style="font-weight:700;margin-bottom:8px"><span class="card-icon">🔮</span>Projeção Próximo Mês</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.75rem">
+      <div><div style="font-size:0.78rem;color:#718096">Renda esperada</div><div style="font-weight:600;color:#68d391">${fmtCurrency(income)}</div></div>
+      <div><div style="font-size:0.78rem;color:#718096">Fixos + crédito</div><div style="font-weight:600;color:#fc8181">${fmtCurrency(fixed)}</div></div>
+      <div><div style="font-size:0.78rem;color:#718096">Variáveis estimados</div><div style="font-weight:600;color:#f6ad55">${fmtCurrency(variable)}</div></div>
+      <div><div style="font-size:0.78rem;color:#718096">Saldo livre</div><div style="font-weight:600;color:${free >= 0 ? '#68d391' : '#fc8181'}">${fmtCurrency(free)}</div></div>
+    </div>
+  `;
+}
+
+function renderContextualAlerts(alerts) {
+  const container = document.getElementById('contextualAlerts');
+  if (!container) return;
+
+  if (!alerts || !alerts.length) { container.innerHTML = ''; return; }
+
+  container.innerHTML = alerts.map(alert =>
+    `<div class="alert-inline alert-${escapeHtml(alert.type)}"><span>${alert.icon || ''}</span><span>${escapeHtml(alert.message || '')}</span></div>`
+  ).join('');
+}
+
+function showKpiDetailModal(kpiName, financialAnalysis, marketKpis) {
+  const modal = document.getElementById('kpiDetailModal');
+  const title = document.getElementById('kpiModalTitle');
+  const body = document.getElementById('kpiModalBody');
+  if (!modal || !title || !body) return;
+
+  const fa = financialAnalysis || {};
+  const mk = marketKpis || {};
+  let titleText = '';
+  let rows = [];
+
+  switch (kpiName) {
+    case 'healthScore': {
+      titleText = 'Saúde Financeira — Detalhamento';
+      const hs = fa.healthScore || {};
+      rows = [
+        { label: 'Score total', value: `${hs.score ?? 50}/100` },
+        { label: 'Classificação', value: hs.label || 'Atencao' },
+        { label: 'Pressão orçamentária', value: `${Math.round((fa.budget?.pressureRatio || 0) * 100)}%` },
+        { label: 'Dívida vencida', value: fmtCurrency(fa.debt?.overdue || 0) },
+        { label: 'Fluxo caixa médio', value: fmtCurrency(fa.cashflow?.averageNet || 0) },
+      ];
+      break;
+    }
+    case 'margemLivre': {
+      titleText = 'Margem Livre — Detalhamento';
+      const b = fa.budget || {};
+      rows = [
+        { label: 'Renda estimada', value: fmtCurrency(b.estimatedIncome || 0) },
+        { label: 'Gasto total planejado', value: fmtCurrency(b.totalPlannedSpend || 0) },
+        { label: 'Margem livre', value: fmtCurrency(b.freeBudgetEstimate || 0) },
+      ];
+      break;
+    }
+    case 'parcelasAtivas': {
+      titleText = 'Parcelas Ativas — Detalhamento';
+      const ir = fa.installmentRelief || {};
+      rows = [
+        { label: 'Parcelas ativas', value: String(ir.activeParcelas || 0) },
+        { label: 'Custo mensal', value: fmtCurrency(ir.totalMonthly || 0) },
+        { label: 'Restante total', value: fmtCurrency(ir.totalRemaining || 0) },
+        { label: 'Data de alívio', value: ir.reliefDate || 'N/A' },
+        { label: 'Economia após alívio', value: fmtCurrency(ir.monthlySavingsAfterRelief || 0) },
+      ];
+      break;
+    }
+    case 'dividaConsolidada': {
+      titleText = 'Dívida Consolidada — Detalhamento';
+      const cd = fa.consolidatedDebt || {};
+      rows = [
+        { label: 'Total', value: fmtCurrency(cd.total || 0) },
+        { label: 'Exposição SCR', value: fmtCurrency(cd.scrExposure || 0) },
+        { label: 'Financiamentos', value: fmtCurrency(cd.financingTotal || 0) },
+        { label: 'Valor vencido', value: fmtCurrency(cd.overdueAmount || 0) },
+      ];
+      break;
+    }
+    case 'comprometimentoRenda': {
+      titleText = 'Comprometimento da Renda — Detalhamento';
+      const b = fa.budget || {};
+      rows = [
+        { label: 'Renda estimada', value: fmtCurrency(b.estimatedIncome || 0) },
+        { label: 'Fixos + crédito', value: fmtCurrency(b.recurringWithCredit || 0) },
+        { label: 'Variáveis estimados', value: fmtCurrency(b.variableSpendEstimate || 0) },
+        { label: 'Comprometimento', value: `${Math.round((b.commitmentRatio || 0) * 100)}%` },
+        { label: 'Pressão total', value: `${Math.round((b.pressureRatio || 0) * 100)}%` },
+      ];
+      break;
+    }
+    default:
+      titleText = 'Detalhamento KPI';
+      rows = [{ label: 'Sem dados disponíveis', value: '—' }];
+  }
+
+  title.textContent = titleText;
+  body.innerHTML = rows.map(r =>
+    `<div class="detail-row"><span class="detail-label">${escapeHtml(r.label)}</span><span class="detail-value">${escapeHtml(r.value)}</span></div>`
+  ).join('');
+  modal.showModal();
+}
+
+// KPI card click delegation
+document.addEventListener('click', (e) => {
+  const card = e.target.closest('[data-kpi-detail]');
+  if (card) showKpiDetailModal(card.dataset.kpiDetail, _storedFinancialAnalysis, _storedMarketKpis);
+});

@@ -50,6 +50,23 @@
 - **SUBS-01**: User can receive subscription suggestions inferred from recurring transaction patterns.
 - **PRIV-01**: User can view a privacy/audit screen explaining local storage usage and confirming local-only processing.
 
+## v2 Requirements — KPI Excellence & Visual Enrichment
+
+### KPI Enrichment
+
+- [ ] **KPI-01**: User can view enriched KPI cards with margin libre, financial health score, active installments with future relief, consolidated debt, and income commitment ratio — all derived dynamically from imported data.
+- [ ] **KPI-02**: User can view market-standard financial KPIs (net worth, savings rate, debt-to-income ratio, emergency fund coverage, spending velocity, cash runway) calculated automatically from existing data.
+- [ ] **KPI-03**: User can view a next-month projection card highlighted in the overview, showing expected income, installments, fixed costs, and free balance.
+
+### Visual Enrichment
+
+- [ ] **VIS-01**: User can see enriched card visuals with icons, progress bars, month-over-month variations, and contextual inline alerts (danger/warning/info/success).
+- [ ] **VIS-02**: User can view line charts (invoice evolution, SCR evolution), donut charts (expense composition), and a complete annual projection table.
+
+### Simulator
+
+- [ ] **SIM-01**: User can simulate installment purchases with value, number of installments, interest rate, and see the impact on free balance before committing.
+
 ## Out of Scope
 
 | Feature | Reason |

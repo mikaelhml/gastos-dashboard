@@ -120,6 +120,11 @@
 
   <div id="financialOverviewPanel" class="helper-panel" style="margin-bottom:24px;display:none"></div>
 
+  <div id="contextualAlerts" class="alerts-container"></div>
+  <div id="kpiEnrichedCards" class="kpi-enriched-grid"></div>
+  <div id="projectionNextMonth" class="projection-highlight-card" style="display:none"></div>
+  <div id="kpiMarketCards" class="kpi-market-grid"></div>
+
   <div class="info-panel info-panel-primary">
     <div class="info-panel-title">ℹ️ Dashboard pronto para começar do zero</div>
     <div class="info-panel-body">
@@ -174,6 +179,43 @@
 <div id="tab-analise" class="tab-content" role="tabpanel" aria-labelledby="tab-button-analise">
   <div class="section-title">🧠 Análise Financeira</div>
   <div id="analiseFinanceiraRoot"></div>
+
+  <div class="chart-grid" style="margin-top:1.5rem">
+    <div class="chart-box">
+      <h3>Evolução SCR</h3>
+      <canvas id="chartScrEvolution" width="400" height="200"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3>Evolução de Faturas</h3>
+      <canvas id="chartInvoiceEvolution" width="400" height="200"></canvas>
+    </div>
+  </div>
+  <div class="chart-grid" style="margin-top:1rem">
+    <div class="chart-box">
+      <h3>Composição de Despesas</h3>
+      <canvas id="chartExpenseDonut" width="300" height="300"></canvas>
+    </div>
+  </div>
+
+  <div class="section-title" style="margin-top:1.5rem">📅 Projeção Anual</div>
+  <div id="annualProjectionTable"></div>
+
+  <div id="purchaseSimulatorSection" class="simulator-section">
+    <h3>Simulador de Compra Parcelada</h3>
+    <div class="simulator-form">
+      <label>Valor total (R$)
+        <input type="number" id="simTotalValue" min="0" step="0.01" placeholder="0.00">
+      </label>
+      <label>Parcelas
+        <input type="number" id="simInstallments" min="1" max="360" step="1" placeholder="12">
+      </label>
+      <label>Juros (% a.m.)
+        <input type="number" id="simInterestRate" min="0" step="0.01" placeholder="0.00">
+      </label>
+      <button id="simCalculateBtn" class="btn btn-primary">Calcular</button>
+    </div>
+    <div id="simResults" class="simulator-results"></div>
+  </div>
 </div>
 
 <!-- ── ASSINATURAS ─────────────────────────────────────────────────────────── -->
@@ -1148,6 +1190,16 @@
   </div>
 </div>
 </main>
+
+<dialog id="kpiDetailModal" class="app-modal">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="kpiModalTitle"></h3>
+      <button class="modal-close" onclick="document.getElementById('kpiDetailModal').close()">&times;</button>
+    </div>
+    <div id="kpiModalBody" class="modal-body"></div>
+  </div>
+</dialog>
 
 <script type="module" src="js/app.js"></script>
 </body>
